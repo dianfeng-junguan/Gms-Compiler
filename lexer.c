@@ -1,0 +1,299 @@
+#include "lexer.h" 
+#include <assert.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stddef.h>
+#include "err.h"
+#include "stdbool.h"
+
+bool number_begin(char c){
+  return isdigit(c);
+}
+bool number_allowed(char c, char* scanned, size_t offset){
+  return 'a'<=c&&c<='f'||'A'<=c&&c<='F'||isdigit(c)||c=='x'||c=='X'||c=='h'||c=='H';
+}
+bool number_after(char* str, list_t* tokens, filepos_t pos){
+  // basically we just check spcial beginnings like 0x, 0b, 0o and ending h.
+  size_t len= strlen(str);
+
+  int hex_mode=0;
+  if (strncmp(str, "0x", 2)==0) {
+    //0x mode
+    hex_mode=1;
+  }else if (str[len-1]=='h') {
+    // h mode
+    hex_mode=2;
+  }
+  // a flag for final check
+  bool flag=true;
+  if(hex_mode>0){
+    // hex number
+    // we check middle chars
+    bool flag=true;
+    size_t beg=hex_mode==1?2:0;
+    size_t end=hex_mode==1?len:len-1;
+    for (size_t i=beg; i<end; i++) {
+      if(!('a'<=str[i]&&str[i]<='f'&&'A'<=str[i]&&str[i]<='F'&&isdigit(str[i]))){
+	// invalid char
+	cry_error(SENDER_LEXER, "invalid hex number. A hex number should either begin with 0x or end with h.", pos);
+	flag=false;
+	break;
+      }
+	  
+    }
+  }else{
+    // decimal.
+    
+    for (size_t i=0; i<len; i++) {
+      if(!isdigit(str[i])){
+	cry_error(SENDER_LEXER, "invalid decimal number.", pos);
+	flag=false;
+	break;
+      }
+    }
+  }
+  
+  if(flag){   
+    // create the token
+    printf("Creating number token:%s\n",str);
+    token_t* tok=create_token(CONSTANT, str, pos);
+    list_append(tokens, tok);
+    return true;
+  }else{
+    return false;
+  }
+  //todo: other radixes
+}
+
+bool word_begin(char c) { return isalpha(c) || c == '_'; }
+bool word_allowed(char c, char* start, size_t offset) { return isalpha(c) || c == '_'; }
+bool word_after(char* str, list_t *tokens, filepos_t pos) {
+  // check if it is keyword
+  token_t* tok=NULL;
+  if(strcmp(str, "fn")==0){
+    tok=create_token(FN, str, pos);
+  }else if (strcmp(str, "if")==0) {
+    tok=create_token(IF, str, pos);
+  }else if (strcmp(str, "else")==0) {
+    tok=create_token(ELSE, str, pos);
+  }else if (strcmp(str, "while")==0) {
+    tok=create_token(WHILE, str, pos);
+  }else if (strcmp(str, "return")==0) {
+    tok=create_token(RETURN, str, pos);
+  }else if (strcmp(str, "let")==0) {
+    tok=create_token(LET, str, pos);
+  }else{
+    //identifier
+    tok=create_token(IDENTIFIER, str, pos);
+  }
+  if (tok) {
+    list_append(tokens, tok);
+    return true;
+  }
+  return false;
+}
+
+bool whitespace_begin(char c) { return isspace(c); }
+bool whitespace_allowed(char c, char* start, size_t offset) { return isspace(c); }
+bool whitespace_after(char* str, list_t *tokens, filepos_t pos) {
+  // we do not want the whitespace so we do nothing
+  return true;
+}
+static str_op_pair_t operators[]={
+  {"==", EQUAL},
+  {">=", GREATER_EQUAL},
+  {"<=", LESS_EQUAL},
+  {"!=", NOT_EQUAL},
+  
+  {"&&", AND},
+  {"||", OR},
+  {"!", NOT},
+  {"^", XOR},
+  
+  {"+", ADD},
+  {"-", SUB},
+  {"*", MUL},
+  {"/", DIV},
+  {"%", MOD},
+  
+  {"<", GREATER},
+  {">", LESS},
+  
+  {"=", ASSIGN},
+  
+};
+
+bool operator_begin(char c) {
+  return c == '+'||c == '-'||c == '*'||c == '/'||c == '%'||c == '^'||c == '!'||c == '&'||
+    c == '|'||c == '='||c == '<'||c == '>'||c == '|'||c == '&';
+}
+bool operator_allowed(char c, char* start, size_t offset) {
+  if(offset>1){
+    // no operator is longer than 2 chars
+    return false;
+  }if(offset==0){
+    // first char. we return true as long as it can be found in the array.
+    char ops[2]={c, '\0'};    
+    for (size_t i=0; i < sizeof(operators)/sizeof(str_op_pair_t); ++i) {
+      if(strcmp(ops, operators[i].str)==0){
+	return true;
+      }
+    }
+    return false;
+  }else{
+    // offset==1. second char. check if we can make a two-char operator.
+    char ops[3]={start[0],c, '\0'};
+    //
+    for (size_t i=0; i<sizeof(operators)/sizeof(str_op_pair_t); ++i) {
+      if(strcmp(ops, operators[i].str)==0){
+	// match
+	return true;
+      }
+    }
+    return false;
+  }
+  
+}
+bool operator_after(char* str, list_t *tokens, filepos_t pos) {
+  for (size_t i=0; i<sizeof(operators); ++i) {
+    if(strcmp(str, operators[i].str)==0){
+      // match long op first
+      token_t* tok=create_token(operators[i].op, str, pos);
+      list_append(tokens, tok);
+      return true;
+    }
+  }
+  return false;
+}
+
+bool separator_begin(char c) {
+  return c==';'||c==':'||c=='\''||c=='\"'||
+    c=='{'||c=='}'||c=='('||c==')'||c==',';
+}
+bool separator_allowed(char c, char* start, size_t offset) {
+  if(offset>=1){
+    // we want single-char separator
+    return false;
+  }
+  return c == ';' || c == ':' || c == '\'' || c == '\"' || c == '{' ||
+         c == '}' || c == '(' || c == ')' || c == ',';
+} 
+static str_sep_pair_t separators[]={
+  { ";", SEMICOLON},
+  { ":", COLON},
+  { "\'", QUOTE},
+  { "\"", DOUBLE_QUOTE},
+  { "{", OPENBRACE},
+  { "}", CLOSEBRACE}, 
+  { "(", OPENPAREN},
+  { ")", CLOSEPAREN},
+  { ",", COMMA}
+};
+bool separator_after(char* str, list_t *tokens, filepos_t pos) {
+  // separator is easy.
+  for (size_t i=0; i < sizeof(separators)/sizeof(str_sep_pair_t); ++i) {
+    if(strcmp(str, separators[i].str)==0){      
+      token_t* tok=create_token(separators[i].sep, str, pos);
+      list_append(tokens, tok);
+      return true;
+    }
+  }
+  return false;
+}
+lex_recipe_t scan_recipe[]={
+  {number_begin, number_allowed, number_after},// costant: number,
+  {word_begin, word_allowed, word_after}, // id and keywords,
+  {whitespace_begin, whitespace_allowed, whitespace_after}, // whitespace,
+  {operator_begin, operator_allowed, operator_after}, // operator,
+  {separator_begin, separator_allowed, separator_after}, // separator,
+  
+};
+/*
+  move forward the str ptr counting the line and column
+ */
+static void forward(char* str, size_t* ptr, size_t len, size_t* line, size_t* col){
+  size_t c=0;
+  while (c<len&&str[*ptr]) {
+    (*col)++;
+    if(str[*ptr]=='\n'){
+      (*line)++;
+      *col=0;
+    }
+    (*ptr)++;
+    c++;
+    
+    
+  }
+}
+list_t do_lex(char *str){
+  size_t ptr=0;
+  size_t len=strlen(str);
+  size_t line=0;
+  size_t col=0;
+  list_t tokens=create_list(100, sizeof(token_t));
+  while (ptr<len) {
+    //todo :
+    // scan by a list
+    /*
+      {
+      {
+        allow_number_begin,
+	number_allowed
+      },...
+      
+      }
+     */
+    bool token_flag=false;
+    for (size_t i=0; i < sizeof(scan_recipe)/sizeof(lex_recipe_t); ++i) {
+      if(scan_recipe[i].begin(str[ptr])){
+	printf("begin with recipe %d, ptr=%d\n",i,ptr);
+	// beginning allowed
+	size_t pioneer=ptr;
+	// scan the whole thing
+	while (pioneer<len && scan_recipe[i].scan(str[pioneer], &str[ptr], pioneer-ptr)) {
+	  pioneer++;
+	}
+	printf("scanned, pioneer=%zu\n",pioneer);
+	if(pioneer==ptr){
+	  //empty str?
+	  printf("scanned an empty str at line %zu, column %zu. this is not right.\n",line, col);
+	  break;
+	}
+	// take out the substr
+	char* subbed=malloc(pioneer-ptr+1);
+	assert(subbed);
+	memcpy(subbed, &str[ptr], pioneer-ptr);
+	subbed[pioneer-ptr]='\0';
+	// final check and add it to the tokens
+	if(!scan_recipe[i].after(subbed,&tokens,(filepos_t){line,col})){
+	  // failed final check, freeing the str.
+	  printf("failed final check\n");
+	  free(subbed);
+	}else{
+	  printf("taken token %s\n",subbed);
+	  // succeeded.
+	  token_flag=true;
+	  forward(str, &ptr, pioneer-ptr, &line, &col);
+	  break;
+	}
+      }
+    }
+    if(!token_flag){ 
+      cry_error(SENDER_LEXER,"met an token-untranslatable str at line %zu, column %zu\n",(filepos_t){line,col});
+      break;
+    }
+  }
+  return tokens;
+}
+
+
+token_t *create_token(tokentype_t token_type, char *value, filepos_t pos){
+  token_t* tok=malloc(sizeof(token_t));
+  assert(tok!=0);
+  tok->token_type=token_type;
+  tok->value=value;
+  tok->position=pos;
+  return tok;
+}
