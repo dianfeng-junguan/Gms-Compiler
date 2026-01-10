@@ -1,8 +1,9 @@
 #include "utils.h"
 typedef enum {
-  NODE_NONE=0,
+  NODE_NONE = 0,
   // this is usally used when a node has more than 2 subnodes.
-  // we put other subnodes under a new leafholder which is under the real parent.
+  // we put other subnodes under a new leafholder which is under the real
+  // parent.
   NODE_LEAFHOLDER,
   // values
   NODE_CONSTANT,
@@ -18,7 +19,7 @@ typedef enum {
   NODE_DEFINITION,
   // expressions
   NODE_COMMALIST,
-  //operator
+  // operator
   NODE_ADD,
   NODE_SUB,
   NODE_MUL,
@@ -27,27 +28,45 @@ typedef enum {
   NODE_BITAND,
   NODE_BITOR,
   NODE_XOR,
-  //comparator
+  // comparator
   NODE_EQUAL,
-  NODEGREATER,
+  NODE_GREATER,
   NODE_LESS,
   NODE_GREATER_EQUAL,
   NODE_LESS_EQUAL,
   NODE_NOT_EQUAL,
   // action
   NODE_ASSIGN,
-  //logic
+  // logic
   NODE_AND,
   NODE_OR,
   NODE_NOT,
-}astnode_type_t;
+  //
+  NODE_FUNCCALL,
+  // others
+  NODE_ARGLIST,
+  NODE_ARGPAIR,
+  NODE_TYPEKW
+} astnode_type_t;
+
 typedef struct _astnode_t{
   astnode_type_t node_type;
   struct _astnode_t* left;
   struct _astnode_t* right;
   // used for value nodes.
   char* value;
+  // used for sematics.
+  list_t syms;
 } astnode_t;
+typedef enum{
+  SYMBOL_VARIABLE,
+  SYMBOL_FUNCTION,
+}symbol_type_t;
+typedef struct{
+  char* name;
+  symbol_type_t type;
+}symbol_t;
+astnode_t do_parse(list_t *tokens);
 
-astnode_t do_parse(list_t* tokens);
+char* get_nodetype_str(astnode_type_t type);
 

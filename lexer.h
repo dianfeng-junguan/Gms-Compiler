@@ -54,7 +54,8 @@ typedef enum {
   TOKEN_VALUE,
   TOKEN_ID,
   TOKEN_EXPR,
-  TOKEN_STATEMENTS
+  TOKEN_STATEMENTS,
+  TOKEN_ARGLIST,
 } tokentype_t;
 
 typedef struct {
