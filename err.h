@@ -1,7 +1,7 @@
 #ifndef _ERR_H
 #define _ERR_H
 #include <stdio.h>
-struct filepos_t;
+struct _filepos_t;
 
 
 extern const char *SENDER_LEXER;
@@ -13,7 +13,7 @@ extern const char *SENDER_ASMGEN;
 /// cry out an error.
 /// sender: values available: SENDER_LEXER, SENDER_PARSER, SENDER_SEMATIC,
 /// SENDER_INTERCODER, SENDER_ASMGEN
-void cry_error(const char* sender, char* msg, filepos_t pos);
+void cry_error(const char* sender, char* msg, struct _filepos_t pos);
 
 #define cry_errorf(sender, pos, fmt, ...)	\
   do{						\

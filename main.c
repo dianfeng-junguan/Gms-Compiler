@@ -2,6 +2,9 @@
 #include "stdio.h"
 #include "lexer.h"
 #include "parser.h"
+#include "sematic.h"
+#include "intercode.h"
+#include "utils.h"
 #include <stddef.h>
 #include <stdio.h>
 
@@ -13,7 +16,18 @@ void print_node(astnode_t* node, int indent){
   if(node->right)
     print_node(node->right, indent+2);
 }
-char* code="fn main(){let i=1;i=i+1;if i<=1 {let a=2;}return 0;}";
+char* code="fn main(){ \
+ let i=1;	       \
+ i=i+1;		       \
+ if i<1 {	       \
+  let a=2;	       \
+ }else if i>=1{	       \
+  let a=3;	       \
+ }else{		       \
+  let a=4;	       \
+ }		       \
+ return 0;	       \
+}";
 int main(int argc, char** argv){
   list_t tokens=do_lex(code);
   for (size_t i=0; i < tokens.len; ++i) {
@@ -23,6 +37,11 @@ int main(int argc, char** argv){
   }
   astnode_t asttree=do_parse(&tokens);
   print_node(&asttree, 0);
-  
+  do_sematic(&asttree);
+  list_t intercodes=gen_intercode(&asttree);
+  for (size_t i=0; i < intercodes.len; ++i) {
+    intercode_t* code=list_get(&intercodes, i);
+    printf("%s %s,%s,%s\n", codetype_tostr(code->type), code->varname, code->operand2, code->store_var);
+  }
   return 0;
 }

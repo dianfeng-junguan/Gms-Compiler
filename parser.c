@@ -62,7 +62,7 @@ char *get_nodetype_str(astnode_type_t type) {
     return NULL;    
   return nodetype_str_map[type];
 }
-astnode_t* create_node(astnode_type_t type, astnode_t* left, astnode_t* right, char* value){
+astnode_t* create_node(astnode_type_t type, astnode_t* left, astnode_t* right, char* value, filepos_t position){
   astnode_t* node=malloc(sizeof(astnode_t));
   assert(node);
   node->node_type=type;
@@ -73,6 +73,8 @@ astnode_t* create_node(astnode_type_t type, astnode_t* left, astnode_t* right, c
   node->syms.capacity = 0;
   node->syms.element_size = 0;
   node->syms.array = 0;
+  node->position = position;
+  node->layer = 0;
   return node;  
 }
 
@@ -104,28 +106,28 @@ typedef astnode_t *(*infix_handler_t)(astnode_t *left, list_t *tokens, size_t* i
 astnode_t *prefix_handler_id(token_t *lefttoken, list_t *tokens, size_t *iter) {
   // LOG(VERBOSE, "%s ",lefttoken->value);
   (*iter)++;
-  return create_node(NODE_IDENTIFIER, NULL, NULL, lefttoken->value);
+  return create_node(NODE_IDENTIFIER, NULL, NULL, lefttoken->value, lefttoken->position);
 }
 astnode_t* prefix_handler_const(token_t *lefttoken, list_t *tokens, size_t* iter){
   // LOG(VERBOSE, "%s ",lefttoken->value);
   (*iter)++;  
-  return create_node(NODE_CONSTANT, NULL, NULL, lefttoken->value);
+  return create_node(NODE_CONSTANT, NULL, NULL, lefttoken->value, lefttoken->position);
 }
 astnode_t* handler_addsub(astnode_type_t type,astnode_t* lhs, astnode_t* rhs){  
-  astnode_t* zero=create_node(NODE_CONSTANT, NULL, NULL, "0");  
-  return create_node(type, lhs?lhs:zero, rhs, NULL);
+  astnode_t* zero=create_node(NODE_CONSTANT, NULL, NULL, "0", lhs->position);  
+  return create_node(type, lhs?lhs:zero, rhs, NULL, lhs->position);
 }
 astnode_t *prefix_handler_add(token_t *lefttoken, list_t *tokens, size_t* iter) {
   astnode_t *left = create_node(
       lefttoken->token_type == IDENTIFIER ? NODE_IDENTIFIER : NODE_CONSTANT,
-      NULL, NULL, lefttoken->value);
+      NULL, NULL, lefttoken->value, lefttoken->position);
   (*iter)++;  
   return handler_addsub(NODE_ADD, NULL, left);
 }
 astnode_t* prefix_handler_minus(token_t *lefttoken, list_t *tokens, size_t* iter){
   astnode_t *left = create_node(
       lefttoken->token_type == IDENTIFIER ? NODE_IDENTIFIER : NODE_CONSTANT,
-      NULL, NULL, lefttoken->value);
+      NULL, NULL, lefttoken->value, lefttoken->position);
   (*iter)++;  
   return handler_addsub(NODE_SUB, NULL, left);
 }
@@ -189,7 +191,7 @@ astnode_t *infix_handler_twoop(tokentype_t optype, astnode_t *left,
               get_last_token(tokens, *iter)->position);
     return NULL;
   }
-  return create_node(mapping[optype], left, right, NULL);
+  return create_node(mapping[optype], left, right, NULL, left->position);
 }
 #define INFIXHDLR_TWO(tokentype)                                               \
   astnode_t *infix_handler_##tokentype(astnode_t *left, list_t *tokens,        \
@@ -311,7 +313,7 @@ astnode_t *parse_identifier(list_t *tokens, size_t *iter) {
   }
   // the char* of the token points to a str that lives longer than the nodes
   // so it's ok to directly copy the pointer.
-  astnode_t* id=create_node(NODE_IDENTIFIER, NULL, NULL, tok->value);
+  astnode_t* id=create_node(NODE_IDENTIFIER, NULL, NULL, tok->value, tok->position);
   assert(id); 
   return id;
 }
@@ -326,7 +328,7 @@ astnode_t *parse_typekw(list_t *tokens, size_t *iter) {
   if(!tok/* todo: check the type  */){
     return NULL;
   }
-  astnode_t* id=create_node(NODE_TYPEKW, NULL, NULL, tok->value);
+  astnode_t* id=create_node(NODE_TYPEKW, NULL, NULL, tok->value, tok->position);
   return id;
 }
 
@@ -351,14 +353,15 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
     }
     case TOKEN_STATEMENTS: {
       // put the statements in a list and put the list in the collected
-      astnode_t *stmts=create_node(NODE_LEAFHOLDER, NULL, NULL, NULL);
+      filepos_t emptypos={0,0};
+      astnode_t *stmts=create_node(NODE_LEAFHOLDER, NULL, NULL, NULL, emptypos);
       astnode_t* holder=stmts;
       while (backupiter<tokens->len) {
 	astnode_t* stmt=parse_statement(tokens, &backupiter);
 	if(stmt){
 	  if(holder->left!=NULL){	
 	    // needs to create a leafholder
-	    astnode_t* new_leafholder=create_node(NODE_LEAFHOLDER, NULL, NULL, NULL);
+	    astnode_t* new_leafholder=create_node(NODE_LEAFHOLDER, NULL, NULL, NULL, emptypos);
 	    holder->right=new_leafholder;
 	    // move to the leafholder
 	    holder=new_leafholder;
@@ -388,7 +391,7 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
         astnode_t *vnode =
             create_node(tok->token_type == IDENTIFIER ? NODE_IDENTIFIER
                                                       : NODE_CONSTANT
-                                                            , NULL, NULL, tok->value);
+                                                            , NULL, NULL, tok->value, tok->position);
 	backupiter++;
 	LOG(VERBOSE, "parse_by_recipe.TOKE_VALUE ok\n");
 	list_append(&collected, vnode);
@@ -404,7 +407,7 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
       token_t *tok=list_get(tokens, backupiter);
       if(tok&&(tok->token_type==IDENTIFIER)){
 	// what we want
-	astnode_t* vnode=create_node(NODE_IDENTIFIER, NULL, NULL, tok->value);       
+	astnode_t* vnode=create_node(NODE_IDENTIFIER, NULL, NULL, tok->value, tok->position);       
 	backupiter++;
 	LOG(VERBOSE, "parse_by_recipe.TOKEN_ID ok\n");
 	list_append(&collected, vnode);
@@ -417,16 +420,19 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
     }
     case TOKEN_ARGLIST: {
       // name type, name type,...
-      astnode_t *arglist = create_node(NODE_ARGLIST, NULL, NULL, NULL);
+      filepos_t emptypos={0,0};      
+      astnode_t *arglist = create_node(NODE_ARGLIST, NULL, NULL, NULL, emptypos);
       astnode_t* holder=arglist;
       while (backupiter<tokens->len) {
+	token_t *tok=list_get(tokens, backupiter);
         astnode_t *id = parse_identifier(tokens, &backupiter);
         astnode_t *argtype = parse_typekw(tokens, &backupiter);
-	astnode_t *pair=create_node(NODE_ARGPAIR, id, argtype, NULL);
+	astnode_t *pair=create_node(NODE_ARGPAIR, id, argtype, NULL, tok->position);
 	if(id&&argtype){ 
-	  if(holder->left!=NULL){	
-	    // needs to create a leafholder
-	    astnode_t* new_leafholder=create_node(NODE_ARGLIST, NULL, NULL, NULL);
+	  if(holder->left!=NULL){
+            // needs to create a leafholder
+	    filepos_t emptypos={0,0};            
+	    astnode_t* new_leafholder=create_node(NODE_ARGLIST, NULL, NULL, NULL, emptypos);
 	    holder->right=new_leafholder;
 	    // move to the leafholder
 	    holder=new_leafholder;
@@ -479,86 +485,112 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
 }
 
 astnode_t* parse_definition(list_t* tokens, size_t* iter){
-  tokentype_t rec[]={LET, TOKEN_ID, ASSIGN, TOKEN_EXPR, SEMICOLON};
+  tokentype_t rec[] = {LET, TOKEN_ID, ASSIGN, TOKEN_EXPR, SEMICOLON};
+  token_t *starttok=list_get(tokens, *iter);
   list_t* collected=parse_by_recipe(tokens, iter, rec, 5);
-  if (!collected) {
+  if (!collected||!starttok) {
     LOG(VERBOSE, "parse_definition failed.\n");
     return NULL;
   }
   astnode_t* id=list_get(collected, 1);  
   astnode_t* rexpr=list_get(collected, 3);
-  astnode_t *defnode = create_node(NODE_DEFINITION, id, rexpr, NULL);
+  astnode_t *defnode = create_node(NODE_DEFINITION, id, rexpr, NULL, starttok->position);
   LOG(VERBOSE, "parsed definition.\n");
   return defnode;
 }
-astnode_t* parse_if(list_t* tokens, size_t* iter){
-  tokentype_t rec[]={IF, TOKEN_EXPR, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
-  list_t* collected=parse_by_recipe(tokens, iter, rec, 5);
-  if (!collected) {
-    LOG(VERBOSE, "parse_if failed.\n");
-    return NULL;
-  }
-  astnode_t* condition=list_get(collected, 1);
-  astnode_t* statements=list_get(collected, 3);
-  astnode_t* ifnode=create_node(NODE_IF, condition, statements, NULL);
-  LOG(VERBOSE, "parsed if.\n");
-  return ifnode;
-}
-astnode_t* parse_elseif(list_t* tokens, size_t* iter){
-  tokentype_t rec[]={ELSE, IF, TOKEN_EXPR, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
-  list_t* collected=parse_by_recipe(tokens, iter, rec, 6);
-  if (!collected) {
-    LOG(VERBOSE, "parse_elseif failed.\n");
-    return NULL;
-  }
-  astnode_t* condition=list_get(collected, 2);
-  astnode_t* statements=list_get(collected, 4);
-  astnode_t* elseifnode=create_node(NODE_ELSEIF, condition, statements, NULL);
-  LOG(VERBOSE, "parsed elseif.\n");
-  return elseifnode;
-}
 astnode_t* parse_else(list_t* tokens, size_t* iter){
   tokentype_t rec[]={ELSE, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
+  token_t *starttok=list_get(tokens, *iter);
   list_t* collected=parse_by_recipe(tokens, iter, rec, 4);
-  if (!collected) {
+  if (!collected||!starttok) {
     LOG(VERBOSE, "parse_else failed.\n");
     return NULL;
   }
   astnode_t* stmts=list_get(collected, 2);
-  astnode_t* elsenode=create_node(NODE_ELSE, stmts, NULL, NULL);
+  astnode_t* elsenode=create_node(NODE_ELSE, stmts, NULL, NULL, starttok->position);
   LOG(VERBOSE, "parsed else.\n");
   return elsenode;
 }
+
+astnode_t* parse_elseif(list_t* tokens, size_t* iter){
+  tokentype_t rec[]={ELSE, IF, TOKEN_EXPR, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
+  token_t *starttok=list_get(tokens, *iter);
+  list_t* collected=parse_by_recipe(tokens, iter, rec, 6);
+  if (!collected||!starttok) {
+    LOG(VERBOSE, "parse_elseif failed.\n");
+    return NULL;
+  }
+  astnode_t* condition=list_get(collected, 2);
+  astnode_t *statements = list_get(collected, 4);
+
+  // parse elseif
+  astnode_t *nextelseifnode = parse_elseif(tokens, iter);
+  // parse else
+  astnode_t *elsenode = parse_else(tokens, iter);
+  astnode_t *branch = nextelseifnode ? nextelseifnode : (elsenode ? elsenode : NULL);
+  // make a leafholder to hold the elsenode and statements
+  astnode_t *holder = create_node(NODE_LEAFHOLDER, statements, branch,
+                                  NULL, starttok->position);
+  
+  astnode_t* elseifnode=create_node(NODE_ELSEIF, condition, holder, NULL, starttok->position);
+  LOG(VERBOSE, "parsed elseif.\n");
+  return elseifnode;
+}
+astnode_t* parse_if(list_t* tokens, size_t* iter){
+  tokentype_t rec[]={IF, TOKEN_EXPR, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
+  token_t *starttok=list_get(tokens, *iter);
+  list_t* collected=parse_by_recipe(tokens, iter, rec, 5);
+  if (!collected||!starttok) {
+    LOG(VERBOSE, "parse_if failed.\n");
+    return NULL;
+  }
+  astnode_t* condition=list_get(collected, 1);
+  astnode_t *statements = list_get(collected, 3);
+  // parse elseif
+  astnode_t *elseifnode = parse_elseif(tokens, iter);
+  // parse else
+  astnode_t *elsenode = parse_else(tokens, iter);
+  astnode_t* branch=elseifnode?elseifnode:(elsenode?elsenode:NULL);  
+  // make a leafholder to hold the elsenode and statements
+  astnode_t *holder = create_node(NODE_LEAFHOLDER, statements, branch,
+                                  NULL, starttok->position);
+  astnode_t* ifnode=create_node(NODE_IF, condition, holder, NULL, starttok->position);
+  LOG(VERBOSE, "parsed if.\n");
+  return ifnode;
+}
 astnode_t* parse_while(list_t* tokens, size_t* iter){
   tokentype_t rec[]={WHILE, TOKEN_EXPR, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
+  token_t *starttok=list_get(tokens, *iter);
   list_t* collected=parse_by_recipe(tokens, iter, rec, 5);
-  if (!collected) {
+  if (!collected||!starttok) {
     LOG(VERBOSE, "parse_while failed.\n");
     return NULL;
   }
   astnode_t* condition=list_get(collected, 1);
   astnode_t* statements=list_get(collected, 3);
-  astnode_t* whilenode=create_node(NODE_WHILE, condition, statements, NULL);
+  astnode_t* whilenode=create_node(NODE_WHILE, condition, statements, NULL, starttok->position);
   LOG(VERBOSE, "parsed while.\n");
   return whilenode;
 }
 astnode_t* parse_return(list_t* tokens, size_t* iter){
   tokentype_t rec[]={RETURN, TOKEN_EXPR, SEMICOLON};
+  token_t *starttok=list_get(tokens, *iter);
   list_t* collected=parse_by_recipe(tokens, iter, rec, 3);
-  if (!collected) {
+  if (!collected||!starttok) {
     LOG(VERBOSE, "parse_return failed.\n");
     return NULL;
   }
   astnode_t* expr=list_get(collected, 1);  
-  astnode_t* returnnode=create_node(NODE_RETURN, expr, NULL, NULL);
+  astnode_t* returnnode=create_node(NODE_RETURN, expr, NULL, NULL, starttok->position);
   LOG(VERBOSE, "parsed return.\n");
   return returnnode;
 }
 astnode_t* parse_function(list_t* tokens, size_t* iter){
   tokentype_t rec[] = {FN,         TOKEN_ID,  OPENPAREN,        TOKEN_ARGLIST,
                        CLOSEPAREN, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
+  token_t *starttok=list_get(tokens, *iter);
   list_t *collected = parse_by_recipe(tokens, iter, rec, 8);  
-  if (!collected) {
+  if (!collected||!starttok) {
     LOG(VERBOSE, "parse_function failed.\n");
     return NULL;
   }
@@ -566,22 +598,23 @@ astnode_t* parse_function(list_t* tokens, size_t* iter){
   astnode_t* args=list_get(collected, 3);
   astnode_t *body = list_get(collected, 6);
   // we need an extra leafholder to hold the rest two nodes together.
-  astnode_t *two_holder = create_node(NODE_LEAFHOLDER, args, body, NULL);      
-  astnode_t* funcnode=create_node(NODE_FUNCTION, id, two_holder, NULL);
+  astnode_t *two_holder = create_node(NODE_LEAFHOLDER, args, body, NULL, starttok->position);      
+  astnode_t* funcnode=create_node(NODE_FUNCTION, id, two_holder, NULL, starttok->position);
   LOG(VERBOSE, "parsed function declaration.\n");
   return funcnode;
 }
 astnode_t* parse_singleexpr(list_t* tokens, size_t* iter){
-   tokentype_t rec[]={TOKEN_EXPR, SEMICOLON};
+  tokentype_t rec[]={TOKEN_EXPR, SEMICOLON};
+  token_t *starttok=list_get(tokens, *iter);
   list_t* collected=parse_by_recipe(tokens, iter, rec, 2);
-  if (!collected) {
+  if (!collected||!starttok) {
     LOG(VERBOSE, "parse_singleexpr failed.\n");
     return NULL;
   }
   astnode_t *expr = list_get(collected, 0);
   // we use leafholder here. it is ok beacuse the value of the expr will
   // be evaled anyway and the desired operations will still be done (func call, assignments etc.)
-  astnode_t* singleexprnode=create_node(NODE_LEAFHOLDER, expr, NULL, NULL);
+  astnode_t* singleexprnode=create_node(NODE_LEAFHOLDER, expr, NULL, NULL, starttok->position);
   LOG(VERBOSE, "parsed singleexpr.\n");
   return singleexprnode;
 }
@@ -615,9 +648,10 @@ astnode_t do_parse(list_t* tokens){
   while (iter<tokens->len) {
     astnode_t* stmt=parse_statement(tokens, &iter);
     if(stmt){
-      if(holder->left!=NULL){	
-	// needs to create a leafholder
-	astnode_t* new_leafholder=create_node(NODE_LEAFHOLDER, NULL, NULL, NULL);	
+      if(holder->left!=NULL){
+        // needs to create a leafholder
+	filepos_t emptypos={0,0};        
+	astnode_t* new_leafholder=create_node(NODE_LEAFHOLDER, NULL, NULL, NULL, emptypos);	
 	holder->right=new_leafholder;
 	// move to the leafholder
 	holder=new_leafholder;

@@ -1,7 +1,7 @@
 #ifndef _UTILS_H
 #define _UTILS_H
 #include <stddef.h>
-typedef struct {
+typedef struct _filepos_t {
   size_t line;
   size_t column;
 }filepos_t;
@@ -30,7 +30,14 @@ void init_list(list_t* list, size_t capacity, size_t element_size);
 
 void list_append(list_t *list, void *element);
 void list_remove(list_t *list, size_t index);
-void* list_get(list_t* list, size_t index);
+void *list_get(list_t *list, size_t index);
+
+/**
+   copy a list into another list.
+   this is a shallow copy. it copies the pointers but does not copy the data pointed to.
+   this will directly overwrite the dest list, so store the value before doing this.
+ **/
+void list_copy(list_t* dest, list_t* src);
 
 void free_list(list_t* list);
 

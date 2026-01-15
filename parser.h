@@ -57,6 +57,10 @@ typedef struct _astnode_t{
   char* value;
   // used for sematics.
   list_t syms;
+  filepos_t position;
+  // layer here means the depth of the scope.
+  // used to differentiate symbols defined at different depths of scopes.
+  int layer;
 } astnode_t;
 typedef enum{
   SYMBOL_VARIABLE,
@@ -65,6 +69,7 @@ typedef enum{
 typedef struct{
   char* name;
   symbol_type_t type;
+  int layer;
 }symbol_t;
 astnode_t do_parse(list_t *tokens);
 

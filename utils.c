@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 list_t create_list(size_t capacity, size_t element_size){
   if (capacity<=0) {
     capacity=1;
@@ -56,4 +57,16 @@ void free_list(list_t* list){
     }
   }
   free(list->array);
+}
+void list_copy(list_t* dest, list_t* src){
+  dest->array=realloc(dest->array, src->capacity*sizeof(void*));
+  dest->capacity=src->capacity;
+  dest->len=src->len;
+  memset(dest->array,0 ,dest->capacity*sizeof(void*));
+  for (size_t i=0; i < src->len; ++i) {
+    dest->array[i]=src->array[i];
+  }
+}
+void init_list(list_t* list, size_t capacity, size_t element_size){
+  *list=create_list(capacity, element_size);
 }
