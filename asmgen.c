@@ -14,8 +14,27 @@
     sprintf(line, fmt, ##__VA_ARGS__);                                         \
     list_append(list_asm, line);                                               \
   } while (0);
+char *alloc_reg(list_t* regs, char* varname) {
+  for (size_t i=0; i < regs->len; ++i) {
+    reg_tmpvar_pair_t* p=list_get(regs, i);
+    if(!p->var||strcmp(p->var,varname)==0){
+      p->var=varname;
+      return p->reg;
+    }
+  }
+  cry_error(SENDER_ASMGEN, "registers full while allocating temporary varaibles", (filepos_t){0});
+  return NULL;
+}
+void free_reg(list_t* regs, char* varname){
+  for (size_t i=0; i < regs->len; ++i) {
+    reg_tmpvar_pair_t* p=list_get(regs, i);
+    if(p->var&&strcmp(p->var,varname)==0){
+      p->var=NULL;      
+    }
+  }
+}
 
-void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase){
+void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table){
   switch (intercode->type) {
   case CODE_DEF_FUNC: {
     ASM("global %s\n",intercode->label);
@@ -35,11 +54,13 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
     ASM("sub rsp,%s\n",intercode->operand2str);
     size_t var_size=atoi(intercode->operand2str);
     *stack_subbase=*stack_subbase+var_size;
-    ASM("%%define %s [rbp-%zu]\n",intercode->operand1str,*stack_subbase);    
+    ASM("%%define %s qword [rbp-%zu]\n",intercode->operand1str,*stack_subbase);    
     break;
   }
   case CODE_ALLOC_TMP: {
     // todo: alloc registers accordingly
+    char* reg=alloc_reg(reg_table, intercode->operand1str);
+    ASM("%%define %s %s\n",intercode->operand1str,reg);
     break;
   }    
 #define TWOOP(codenoprefix,ins)						\
@@ -136,11 +157,25 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
     break;
   }
 }
+reg_tmpvar_pair_t* create_regvar(char* reg){
+  reg_tmpvar_pair_t* stru=malloc(sizeof(reg_tmpvar_pair_t));
+  assert(stru);
+  strcpy(stru->reg,reg);
+  stru->var=NULL;
+  return stru;
+}
 char* asm_gen(list_t* intercodes){
   list_t asm_codes=create_list(20, sizeof(char*));
   size_t stk=0;
+  list_t reg_table=create_list(6, sizeof(reg_tmpvar_pair_t));
+  list_append(&reg_table, create_regvar("rax"));
+  list_append(&reg_table, create_regvar("rbx"));
+  list_append(&reg_table, create_regvar("rcx"));
+  list_append(&reg_table, create_regvar("rdx"));
+  list_append(&reg_table, create_regvar("rdi"));
+  list_append(&reg_table, create_regvar("rsi"));
   for (size_t i=0; i < intercodes->len; ++i) {
-    asm_translate(&asm_codes, list_get(intercodes, i),&stk);
+    asm_translate(&asm_codes, list_get(intercodes, i),&stk,&reg_table);    
   }
   // now concat the codes
   size_t nowcapa=128;

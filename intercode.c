@@ -112,9 +112,10 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
 #define TWOOP_INTERCODE(type_noprefix)                                         \
   case NODE_##type_noprefix: {                                                 \
     assert(node->left && node->right);                                         \
-    char *lhs = gen_node(node->left, code_list, tmpnum,layer+1);                       \
-    char *rhs = gen_node(node->right, code_list, tmpnum + 1,layer+2);                  \
+    char *lhs = gen_node(node->left, code_list, tmpnum, layer + 1);            \
+    char *rhs = gen_node(node->right, code_list, tmpnum + 1, layer + 2);       \
     char *res = make_tmpvar(tmpnum + 3);                                       \
+    CODE(code_list, CODE_ALLOC_TMP, res, "8", 0);                              \
     intercode_t *code = create_code(CODE_##type_noprefix, lhs, rhs, res);      \
     list_append(code_list, code);                                              \
     return res;                                                                \
