@@ -69,10 +69,7 @@ astnode_t* create_node(astnode_type_t type, astnode_t* left, astnode_t* right, c
   node->left=left;
   node->right = right;
   node->value = value;
-  node->syms.len = 0;
-  node->syms.capacity = 0;
-  node->syms.element_size = 0;
-  node->syms.array = 0;
+  node->syms=create_list(0, sizeof(symbol_t));
   node->position = position;
   node->layer = 0;
   return node;  
@@ -135,7 +132,7 @@ astnode_t *prefix_handler_openparen(token_t *lefttoken, list_t *tokens,
                                     size_t *iter) {
   size_t backupiter=*iter+1;
   astnode_t *inner = parse_expr(tokens, &backupiter, 0);
-  if (peek_check_token(tokens, backupiter+1, CLOSEPAREN)) {
+  if (peek_check_token(tokens, backupiter, CLOSEPAREN)) {
     backupiter++;
     *iter=backupiter;
     return inner;
@@ -144,26 +141,14 @@ astnode_t *prefix_handler_openparen(token_t *lefttoken, list_t *tokens,
   return NULL;
 }
 int precedences[] = {
-  [ADD] = 120,
-  [SUB] = 120,
-  [MUL] = 130,
-  [DIV] = 130,
-  [MOD] = 130,
-  [EQUAL] = 110,
-  [GREATER] = 110,
-  [LESS] = 110,
-  [GREATER_EQUAL] = 110,
-  [LESS_EQUAL] = 110,
-  [ASSIGN] = 105, // a=1, b=2=>2
-  [COMMA] = 100,
-  [OPENPAREN] = 1000,
-  [CLOSEPAREN] = 0,
-  [SEMICOLON] = 0,
-  [OPENBRACE] = 0
-};
-astnode_t *infix_handler_twoop(tokentype_t optype, astnode_t *left,
-                               list_t *tokens, size_t *iter) {
-  astnode_type_t mapping[] = {
+    [ADD] = 120,        [SUB] = 120,        [MUL] = 130,
+    [DIV] = 130,        [MOD] = 130,        [EQUAL] = 110,
+    [GREATER] = 110,    [LESS] = 110,       [GREATER_EQUAL] = 110,
+    [LESS_EQUAL] = 110,
+    [ASSIGN] = 105, // a=1, b=2=>2
+    [COMMA] = 100,      [OPENPAREN] = 1000, [CLOSEPAREN] = 0,
+    [SEMICOLON] = 0,    [OPENBRACE] = 0};
+static astnode_type_t mapping[] = {
     [ADD] = NODE_ADD,
     [SUB] = NODE_SUB,
     [MUL] = NODE_MUL,
@@ -182,9 +167,13 @@ astnode_t *infix_handler_twoop(tokentype_t optype, astnode_t *left,
     [OR] = NODE_OR,
 
     [COMMA] = NODE_COMMALIST,
-     
-    [OPENPAREN]=NODE_FUNCCALL,
-  };
+
+    [OPENPAREN] = NODE_FUNCCALL,
+};
+
+astnode_t *infix_handler_twoop(tokentype_t optype, astnode_t *left,
+                               list_t *tokens, size_t *iter) {
+  
   astnode_t *right = parse_expr(tokens, iter, precedences[optype]);
   if(!right){
     cry_error(SENDER_PARSER, "missing right expr",
@@ -494,7 +483,9 @@ astnode_t* parse_definition(list_t* tokens, size_t* iter){
   }
   astnode_t* id=list_get(collected, 1);  
   astnode_t* rexpr=list_get(collected, 3);
-  astnode_t *defnode = create_node(NODE_DEFINITION, id, rexpr, NULL, starttok->position);
+  astnode_t *defnode =
+      create_node(NODE_DEFINITION, id, rexpr, NULL, starttok->position);
+  free(collected);
   LOG(VERBOSE, "parsed definition.\n");
   return defnode;
 }
@@ -507,8 +498,10 @@ astnode_t* parse_else(list_t* tokens, size_t* iter){
     return NULL;
   }
   astnode_t* stmts=list_get(collected, 2);
-  astnode_t* elsenode=create_node(NODE_ELSE, stmts, NULL, NULL, starttok->position);
-  LOG(VERBOSE, "parsed else.\n");
+  astnode_t *elsenode =
+      create_node(NODE_ELSE, stmts, NULL, NULL, starttok->position);
+  free(collected);
+  LOG(VERBOSE, "parsed else.\n");  
   return elsenode;
 }
 
@@ -531,8 +524,10 @@ astnode_t* parse_elseif(list_t* tokens, size_t* iter){
   // make a leafholder to hold the elsenode and statements
   astnode_t *holder = create_node(NODE_LEAFHOLDER, statements, branch,
                                   NULL, starttok->position);
-  
-  astnode_t* elseifnode=create_node(NODE_ELSEIF, condition, holder, NULL, starttok->position);
+
+  astnode_t *elseifnode =
+      create_node(NODE_ELSEIF, condition, holder, NULL, starttok->position);
+  free(collected);  
   LOG(VERBOSE, "parsed elseif.\n");
   return elseifnode;
 }
@@ -554,7 +549,9 @@ astnode_t* parse_if(list_t* tokens, size_t* iter){
   // make a leafholder to hold the elsenode and statements
   astnode_t *holder = create_node(NODE_LEAFHOLDER, statements, branch,
                                   NULL, starttok->position);
-  astnode_t* ifnode=create_node(NODE_IF, condition, holder, NULL, starttok->position);
+  astnode_t *ifnode =
+      create_node(NODE_IF, condition, holder, NULL, starttok->position);
+  free(collected);  
   LOG(VERBOSE, "parsed if.\n");
   return ifnode;
 }
@@ -568,20 +565,34 @@ astnode_t* parse_while(list_t* tokens, size_t* iter){
   }
   astnode_t* condition=list_get(collected, 1);
   astnode_t* statements=list_get(collected, 3);
-  astnode_t* whilenode=create_node(NODE_WHILE, condition, statements, NULL, starttok->position);
+  astnode_t *whilenode =
+      create_node(NODE_WHILE, condition, statements, NULL, starttok->position);
+  free(collected);  
   LOG(VERBOSE, "parsed while.\n");
   return whilenode;
 }
 astnode_t* parse_return(list_t* tokens, size_t* iter){
   tokentype_t rec[]={RETURN, TOKEN_EXPR, SEMICOLON};
   token_t *starttok=list_get(tokens, *iter);
-  list_t* collected=parse_by_recipe(tokens, iter, rec, 3);
+  size_t backupiter=*iter;
+  list_t* collected=parse_by_recipe(tokens, &backupiter, rec, 3);
+  bool has_expr=true;
   if (!collected||!starttok) {
-    LOG(VERBOSE, "parse_return failed.\n");
-    return NULL;
+    //try again with no expr
+    has_expr=false;
+    tokentype_t rec2[]={RETURN, SEMICOLON};    
+    collected=parse_by_recipe(tokens, iter, rec2, 2);
+    if (!collected||!starttok){     
+      LOG(VERBOSE, "parse_return failed.\n");
+      return NULL; 
+    }
+  }else{
+    *iter=backupiter;
   }
-  astnode_t* expr=list_get(collected, 1);  
-  astnode_t* returnnode=create_node(NODE_RETURN, expr, NULL, NULL, starttok->position);
+  astnode_t* expr=has_expr?list_get(collected, 1):NULL;
+  astnode_t *returnnode =
+      create_node(NODE_RETURN, expr, NULL, NULL, starttok->position);
+  free(collected);
   LOG(VERBOSE, "parsed return.\n");
   return returnnode;
 }
@@ -598,8 +609,10 @@ astnode_t* parse_function(list_t* tokens, size_t* iter){
   astnode_t* args=list_get(collected, 3);
   astnode_t *body = list_get(collected, 6);
   // we need an extra leafholder to hold the rest two nodes together.
-  astnode_t *two_holder = create_node(NODE_LEAFHOLDER, args, body, NULL, starttok->position);      
-  astnode_t* funcnode=create_node(NODE_FUNCTION, id, two_holder, NULL, starttok->position);
+  astnode_t *two_holder = create_node(NODE_LEAFHOLDER, args, body, NULL, starttok->position);
+  astnode_t *funcnode =
+      create_node(NODE_FUNCTION, id, two_holder, NULL, starttok->position);
+  free(collected);  
   LOG(VERBOSE, "parsed function declaration.\n");
   return funcnode;
 }
@@ -614,7 +627,9 @@ astnode_t* parse_singleexpr(list_t* tokens, size_t* iter){
   astnode_t *expr = list_get(collected, 0);
   // we use leafholder here. it is ok beacuse the value of the expr will
   // be evaled anyway and the desired operations will still be done (func call, assignments etc.)
-  astnode_t* singleexprnode=create_node(NODE_LEAFHOLDER, expr, NULL, NULL, starttok->position);
+  astnode_t *singleexprnode =
+      create_node(NODE_LEAFHOLDER, expr, NULL, NULL, starttok->position);
+  free(collected);  
   LOG(VERBOSE, "parsed singleexpr.\n");
   return singleexprnode;
 }

@@ -13,7 +13,7 @@
 
 
 void print_node(astnode_t* node, int indent){
-  printf("%*s%s=%s\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>");
+  printf("%*s%s=%s@%d\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer);
   if(node->left)
     print_node(node->left, indent+2); 
   if(node->right)
@@ -40,6 +40,10 @@ int main(int argc, char** argv){
   char* input=argv[1];
   char* output=argc<3?"a.asm":argv[2];
   FILE* f=fopen(input, "r");
+  if(!f){
+    perror("failed open input file");
+    return -1;
+  }
   fseek(f, 0, SEEK_END);
   size_t len=ftell(f);
   fseek(f, 0, SEEK_SET);
@@ -64,10 +68,10 @@ int main(int argc, char** argv){
   }
 #endif
   astnode_t asttree=do_parse(&tokens);
+  do_sematic(&asttree);  
 #ifdef DEBUG
   print_node(&asttree, 0);
 #endif
-  do_sematic(&asttree);
   list_t intercodes=gen_intercode(&asttree);
 #ifdef DEBUG
   for (size_t i=0; i < intercodes.len; ++i) {
@@ -81,6 +85,10 @@ int main(int argc, char** argv){
 #endif
 #ifndef USE_TESTCODE
   FILE* fw=fopen(output, "w");
+  if(!fw){
+    perror("failed open output file");
+    return -1;
+  }
   fwrite(asmcode, strlen(asmcode), 1, fw);
   fclose(fw);
 #endif

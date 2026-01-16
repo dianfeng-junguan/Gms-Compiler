@@ -51,12 +51,14 @@ void* list_get(list_t* list, size_t index){
 } 
 
 void free_list(list_t* list){
-  for (size_t i=0; i < list->capacity; ++i) {
+  for (size_t i=0; i < list->len; ++i) {
     if (list->array[i]!=0) { 
       free(list->array[i]);
     }
   }
   free(list->array);
+  list->array=0;
+  list->len=list->capacity=0;
 }
 void list_copy(list_t* dest, list_t* src){
   dest->array=realloc(dest->array, src->capacity*sizeof(void*));

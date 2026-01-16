@@ -43,11 +43,16 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
     break;
   }
   case CODE_RETURN: {
+    if(intercode->operand1){
+      ASM("mov rax,%s\n",intercode->operand1str);
+    }
     ASM("mov rsp,rbp\npop rbp\nret\n");
     break;
   }
   case CODE_ALLOC_GLOBAL:{
-    ASM("%s: dq %s\n",intercode->label,intercode->operand2str);
+    char* initv=intercode->operand2str;
+    if(!initv)initv="0";
+    ASM("%s: dq %s\n",intercode->label,initv);
     break;
   }
   case CODE_ALLOC_LOCAL: {

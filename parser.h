@@ -70,6 +70,7 @@ typedef struct{
   char* name;
   symbol_type_t type;
   int layer;
+  unsigned long long value;
 }symbol_t;
 astnode_t do_parse(list_t *tokens);
 

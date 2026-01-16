@@ -266,9 +266,54 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   }
   return NULL;
 }
-
+void free_node(astnode_t *node) {
+  if(!node)return;  
+  if (node->left){
+    free_node(node->left);
+    node->left=NULL;
+  }  
+  if (node->right){
+    free_node(node->right);
+    node->right=NULL;
+  }
+  free(node);
+}
+void put_global_var_inits(list_t *code_list, astnode_t *ast) {
+  int tmpnum = 0;
+  if (ast->node_type == NODE_DEFINITION && ast->layer == 0) {    
+    char* globtmpv=gen_node(ast->right, code_list, tmpnum, 0);
+    CODE(code_list, CODE_MOV, ast->left->value, globtmpv, 0);
+    // remove the node since we have generated it already
+    // we do this by setting the astnode type to NONE and free the subnodes
+    free_node(ast->left);
+    free_node(ast->right);
+    ast->left=NULL;
+    ast->right=NULL;
+    ast->node_type=NODE_NONE;
+  }else{    
+    if(ast->left&&ast->left->layer==0){
+      put_global_var_inits(code_list, ast->left);
+    }
+    if(ast->right&&ast->right->layer==0){
+      put_global_var_inits(code_list, ast->right);
+    }
+  }  
+}
 list_t gen_intercode(astnode_t* ast){
-  list_t codes=create_list(20, sizeof(intercode_t));
+  list_t codes = create_list(20, sizeof(intercode_t));  
+  // generate global symbols
+  for (size_t i = 0; i < ast->syms.len; ++i) {
+    symbol_t *sym = list_get(&ast->syms, i);
+    if(sym->type==SYMBOL_VARIABLE){
+      CODE(&codes, CODE_ALLOC_GLOBAL, sym->name, 0 ,0);
+    }
+  }
+  // put init code
+  CODE(&codes, CODE_DEF_FUNC, "_start", 0, 0);  
+  // scan the ast and find global definitions
+  put_global_var_inits(&codes, ast);
+  CODE(&codes, CODE_FUNCCALL, "main", 0, 0);
+  CODE(&codes, CODE_RETURN, 0, 0, 0);
   gen_node(ast, &codes,0,0);
   return codes;
 }

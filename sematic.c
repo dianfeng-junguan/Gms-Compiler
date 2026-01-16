@@ -26,12 +26,14 @@ symbol_t* create_symbol(char* name, symbol_type_t type, int layer){
   sym->name=name;
   sym->type=type;
   sym->layer=layer;
+  sym->value=0;
   return sym;
 }
 
 bool check_statement(astnode_t* node, list_t* symbols, int layer){
   bool success=true;
   filepos_t pos=node->position;
+  node->layer=layer;
   switch (node->node_type) {    
   case NODE_CONSTANT:{
     // for now we do not check it.
