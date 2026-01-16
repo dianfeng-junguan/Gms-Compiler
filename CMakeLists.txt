@@ -4,5 +4,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_COMPILER gcc)
 aux_source_directory(. SRC_LIST)
 add_executable(GMS_COMPILER ${SRC_LIST})
-target_compile_options(GMS_COMPILER PRIVATE -std=c11 -g -gdwarf-4 -Wall -Wextra)
+target_compile_options(GMS_COMPILER PRIVATE -std=c11 -g -gdwarf-4 -Wall -Wextra -DDEBUG)
 target_link_options(GMS_COMPILER PRIVATE -v)
+

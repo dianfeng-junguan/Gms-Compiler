@@ -1,6 +1,8 @@
 #include "utils.h"
 typedef enum {
   CODE_DEF_FUNC,
+  CODE_DEF_FUNC_END,
+  CODE_SCOPE_END,
   CODE_ALLOC_GLOBAL,
   CODE_ALLOC_LOCAL,
   CODE_ALLOC_TMP,
@@ -26,6 +28,7 @@ typedef enum {
   CODE_JB,
   CODE_JBE,
   CODE_JE,
+  CODE_JNE,
   CODE_LABEL,
       
   CODE_PUSHARG,
@@ -39,13 +42,16 @@ typedef struct {
     char* label;
     char* varname;
     u64 operand1;
+    char* operand1str;
   };
   union{
     u64 operand2;
+    char* operand2str;
     u64 varsize;
   };
   union{
     u64 operand3;
+    char* operand3str;
     u64 store_to;
     char* store_var;
   };

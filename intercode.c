@@ -21,13 +21,13 @@ char* mklabel(){
     id /= 10;
     digits++;
   }
-  char *lbl = malloc(5 + digits + 1);
+  char *lbl = malloc(6 + digits + 1);
   assert(lbl);
-  memset(lbl, 0, 5 + digits + 1);
-  memcpy(lbl, "label", 5);
+  memset(lbl, 0, 6 + digits + 1);
+  memcpy(lbl, ".label", 6);
   id=labelid++;
   for (size_t i=0; i < digits; ++i) {
-    *(lbl + 5 + i) = '0' + id % 10;
+    *(lbl + 6 + i) = '0' + id % 10;
     id/=10;
   }
   return lbl;
@@ -75,12 +75,15 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     list_append(code_list, code);
     // then assign the symbols
     for (size_t i=0; i < node->syms.len; ++i) {
-      symbol_t* sym=list_get(&node->syms, i);
-      intercode_t *alloc_local = create_code(CODE_ALLOC_LOCAL, sym->name, "8" ,0);
-      list_append(code_list, alloc_local);
+      symbol_t *sym = list_get(&node->syms, i);
+      if(sym->layer==layer+1){
+	intercode_t *alloc_local = create_code(CODE_ALLOC_LOCAL, sym->name, "8" ,0);
+        list_append(code_list, alloc_local);
+      }
     }
-    // then gen the body    
-    gen_node(node->right, code_list, tmpnum,layer+1);
+    // then gen the body
+    gen_node(node->right, code_list, tmpnum, layer + 1);
+    CODE(code_list, CODE_DEF_FUNC_END, funcname, 0, 0);
     break;
   }
   case NODE_RETURN: {
@@ -110,8 +113,8 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   case NODE_##type_noprefix: {                                                 \
     assert(node->left && node->right);                                         \
     char *lhs = gen_node(node->left, code_list, tmpnum,layer+1);                       \
-    char *rhs = gen_node(node->right, code_list, tmpnum + 1,layer+1);                  \
-    char *res = make_tmpvar(tmpnum + 2);                                       \
+    char *rhs = gen_node(node->right, code_list, tmpnum + 1,layer+2);                  \
+    char *res = make_tmpvar(tmpnum + 3);                                       \
     intercode_t *code = create_code(CODE_##type_noprefix, lhs, rhs, res);      \
     list_append(code_list, code);                                              \
     return res;                                                                \
@@ -126,84 +129,35 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
       
       TWOOP_INTERCODE(BITAND)
       TWOOP_INTERCODE(BITOR)
-      // TWOOP_INTERCODE(BITNOT)      
+      // TWOOP_INTERCODE(BITNOT)
       /*
-        CODE_CMP works like this:
-	compare the two and store the result (0 if equal, 1 if lhs>rhs, 2 if lhs<rhs) in lhs
+	the comparing node returns 1 if true, otherwise 0 as false.
        */
-#define CMP_INTERCODE(type_noprefix, rescmp_str)                               \
+#define CMP_INTERCODE(type_noprefix, jmpcode)                                  \
   case NODE_##type_noprefix: {                                                 \
       assert(node->left && node->right);                                       \
-      char *lhs = gen_node(node->left, code_list, tmpnum,layer+1);                     \
-      char *rhs = gen_node(node->right, code_list, tmpnum + 1,layer+1);                \
+      char *lhs = gen_node(node->left, code_list, tmpnum, layer + 1);          \
+      char *rhs = gen_node(node->right, code_list, tmpnum + 1, layer + 1);     \
       char *tmpv = make_tmpvar(tmpnum + 2);                                    \
-      intercode_t *code = create_code(CODE_CMP, lhs, rhs, tmpv);               \
-      intercode_t *cmpres = create_code(CODE_CMP, tmpv, #rescmp_str, tmpv);    \
-      list_append(code_list, code);                                            \
-      list_append(code_list, cmpres);                                          \
-      return tmpv;                                                             \
-      break;                                                                   \
-  }
-      
-      CMP_INTERCODE(EQUAL, 0)
-      CMP_INTERCODE(GREATER, 1)
-      CMP_INTERCODE(LESS, 2)
-  case NODE_NOT_EQUAL: {                                                 
-      assert(node->left && node->right);                                       
-      char *lhs = gen_node(node->left, code_list, tmpnum,layer+1);                     
-      char *rhs = gen_node(node->right, code_list, tmpnum + 1,layer+1);
-      char *tmpv = make_tmpvar(tmpnum + 2);
-      char *tmpcmpres = make_tmpvar(tmpnum + 3);
-
-      char* done_branch = mklabel();
-      char* false_branch = mklabel();
-      CODE(code_list, CODE_CMP, lhs, rhs, tmpv);
-      CODE(code_list, CODE_CMP, tmpv, "0", tmpcmpres);
-      CODE(code_list, CODE_JE, false_branch, 0, 0);
-      // true branch
-      CODE(code_list, CODE_MOV, tmpv, "0", 0);
-      CODE(code_list, CODE_JMP, done_branch, 0, 0);
-      // false branch
-      CODE(code_list, CODE_LABEL, false_branch, 0, 0);
-      CODE(code_list, CODE_MOV, tmpv, "1", 0);
-      // done
-      CODE(code_list, CODE_LABEL, done_branch, 0, 0);
-      
-      return tmpv;                                                             
-      break;                                                                   
-    }      
-#define GELE_INTERCODE(nodetype_noprefix, cmpres_ok, cmpres_false)             \
-  case NODE_##nodetype_noprefix: {                                             \
-      assert(node->left && node->right);                                       \
-      char *lhs = gen_node(node->left, code_list, tmpnum,layer+1);                     \
-      char *rhs = gen_node(node->right, code_list, tmpnum + 1,layer+1);                \
-      char *tmpv = make_tmpvar(tmpnum + 2);                                    \
-      char *tmpcmpres = make_tmpvar(tmpnum + 3);                               \
-      CODE(code_list, CODE_ALLOC_TMP, tmpv, "8", 0);                           \
-      CODE(code_list, CODE_ALLOC_TMP, tmpcmpres, "8", 0);                      \
-      CODE(code_list, CODE_CMP, lhs, rhs, tmpv);                               \
-                                                                               \
-      CODE(code_list, CODE_CMP, tmpv, "0", tmpcmpres);                         \
-      char *ge_lbl = mklabel();                                                \
-      char *done_lbl = mklabel();                                              \
-      CODE(code_list, CODE_JE, ge_lbl, 0, 0);                                  \
-                                                                               \
-      CODE(code_list, CODE_CMP, tmpv, #cmpres_ok, tmpcmpres);                  \
-      CODE(code_list, CODE_JE, ge_lbl, 0, 0);                                  \
-                                                                               \
-      CODE(code_list, CODE_MOV, tmpv, #cmpres_false, 0);                       \
-      CODE(code_list, CODE_JMP, done_lbl, 0, 0);                               \
-                                                                               \
-      CODE(code_list, CODE_LABEL, ge_lbl, 0, 0);                               \
+      CODE(code_list, CODE_CMP, lhs, rhs, 0);                                  \
+      char *donelbl = mklabel();                                               \
+      char *truelbl = mklabel();                                               \
+      CODE(code_list, CODE_##jmpcode, truelbl, 0, 0);                          \
       CODE(code_list, CODE_MOV, tmpv, "0", 0);                                 \
-                                                                               \
-      CODE(code_list, CODE_LABEL, done_lbl, 0, 0);                             \
+      CODE(code_list, CODE_JMP, donelbl, 0, 0);                                \
+      CODE(code_list, CODE_LABEL, truelbl, 0, 0);                              \
+      CODE(code_list, CODE_MOV, tmpv, "1", 0);                                 \
+      CODE(code_list, CODE_LABEL, donelbl, 0, 0);                              \
       return tmpv;                                                             \
       break;                                                                   \
   }
-      
-      GELE_INTERCODE(GREATER_EQUAL, 1, 2)
-      GELE_INTERCODE(LESS_EQUAL, 2, 1)
+     
+      CMP_INTERCODE(EQUAL, JE)
+      CMP_INTERCODE(GREATER, JA)
+      CMP_INTERCODE(LESS, JB)
+      CMP_INTERCODE(NOT_EQUAL, JNE)
+      CMP_INTERCODE(GREATER_EQUAL, JAE)
+      CMP_INTERCODE(LESS_EQUAL, JBE)
       
   case NODE_IDENTIFIER: {
       return node->value;
@@ -241,8 +195,8 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   case NODE_ELSEIF:
   case NODE_IF: {
     char *cond_var = gen_node(node->left, code_list, tmpnum,layer+1);
-    // CODE_CMP returns 0 if equ, for comparation nodes, they return 0 if condition is true
-    CODE(code_list, CODE_CMP, cond_var, "0", 0);
+    // for comparation nodes, they return 1 if condition is true
+    CODE(code_list, CODE_CMP, cond_var, "1", 0);
     char* true_label=mklabel();
     char* done_label=mklabel();
     // cond_var tmpvar freed
@@ -260,6 +214,7 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     }
     gen_node(node->right, code_list, tmpnum,layer+1);
     CODE(code_list, CODE_LABEL, done_label, 0, 0);
+    CODE(code_list, CODE_SCOPE_END, 0, 0, 0);    
     break;
   }
     // todo: while node
@@ -272,10 +227,38 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
       if (sym->layer==layer+1)
 	CODE(code_list, CODE_ALLOC_LOCAL, sym->name, "8" ,0);
     }
-    gen_node(node->left, code_list, tmpnum,layer+1);
+    gen_node(node->left, code_list, tmpnum, layer + 1);
+    CODE(code_list, CODE_SCOPE_END, 0, 0, 0);    
     break;
   }
-  
+  case NODE_WHILE: {
+    char *repeat_label=mklabel();
+    CODE(code_list, CODE_LABEL, repeat_label, 0, 0);    
+    char *cond_var = gen_node(node->left, code_list, tmpnum,layer+1);
+    // CODE_CMP returns 0 if equ, for comparation nodes, they return 0 if condition is true
+    CODE(code_list, CODE_CMP, cond_var, "1", 0);
+    char* true_label=mklabel();
+    char* done_label=mklabel();
+    // cond_var tmpvar freed
+    CODE(code_list, CODE_JE, true_label, 0, 0);
+    CODE(code_list, CODE_JMP, done_label, 0, 0);
+    CODE(code_list, CODE_LABEL, true_label, 0, 0);
+    // body
+    // right: leafholder(statements, elseif/else/NULL)
+    // alloc syms
+    for (size_t i=0; i < node->syms.len; ++i) {
+      symbol_t *sym = list_get(&node->syms, i);
+      //printf("sym: name=%s, layer=%d, cur layer=%d\n",sym->name, sym->layer, layer);
+      if (sym->layer==layer+1)
+	CODE(code_list, CODE_ALLOC_LOCAL, sym->name, "8" ,0);
+    }
+    gen_node(node->right, code_list, tmpnum, layer + 1);
+    // judge again
+    CODE(code_list, CODE_JMP, repeat_label, 0, 0);
+    CODE(code_list, CODE_LABEL, done_label, 0, 0);
+    CODE(code_list, CODE_SCOPE_END, 0, 0, 0);    
+    break;
+  }
   default:
     cry_errorf(SENDER_INTERCODER, node->position, "%s unsupported", get_nodetype_str(node->node_type));
     break;
@@ -290,6 +273,7 @@ list_t gen_intercode(astnode_t* ast){
 }
 static char *codetype_strs[] = {
   [CODE_DEF_FUNC]="CODE_DEF_FUNC",
+  [CODE_DEF_FUNC_END]="CODE_DEF_FUNC_END",
   [CODE_ALLOC_GLOBAL]="CODE_ALLOC_GLOBAL",
   [CODE_ALLOC_LOCAL]="CODE_ALLOC_LOCAL",
   [CODE_ALLOC_TMP]="CODE_ALLOC_TMP",
@@ -315,8 +299,11 @@ static char *codetype_strs[] = {
   [CODE_JB]="CODE_JB",
   [CODE_JBE]="CODE_JBE",
   [CODE_JE]="CODE_JE",
-  [CODE_LABEL]="CODE_LABEL"
-    
+  [CODE_JNE]="CODE_JNE",
+  [CODE_LABEL]="CODE_LABEL",
+  [CODE_SCOPE_END]="CODE_SCOPE_END",
+  [CODE_PUSHARG]="CODE_PUSHARG",
+  [CODE_FUNCCALL]="CODE_FUNCCALL",
 };
 char *codetype_tostr(intercode_type_t type) {
   return codetype_strs[type];
