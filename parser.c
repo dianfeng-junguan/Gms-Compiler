@@ -206,7 +206,25 @@ INFIXHDLR_TWO(NOT_EQUAL);
 INFIXHDLR_TWO(AND);
 INFIXHDLR_TWO(OR);
 INFIXHDLR_TWO(NOT);
-INFIXHDLR_TWO(OPENPAREN);
+
+astnode_t *infix_handler_OPENPAREN(astnode_t *left,
+                               list_t *tokens, size_t *iter) {
+  // we need to parse arglist here rather than commalist
+  astnode_t *right = parse_expr(tokens, iter, 0);  
+  if(!right){
+    cry_error(SENDER_PARSER, "missing right expr",
+              get_last_token(tokens, *iter)->position);
+    return NULL;
+  }
+  // consume the close paren  
+  if(!peek_check_token(tokens, *iter, CLOSEPAREN)){
+    cry_error(SENDER_PARSER, "missing close paren",
+              get_last_token(tokens, *iter)->position);
+    return NULL;
+  }
+  (*iter)++;
+  return create_node(mapping[OPENPAREN], left, right, NULL, left->position);
+}
 prefix_handler_t prefix_handlers[50] = {
     [IDENTIFIER] = prefix_handler_id,
     [CONSTANT] = prefix_handler_const,

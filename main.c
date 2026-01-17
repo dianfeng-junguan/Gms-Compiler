@@ -19,7 +19,9 @@ void print_node(astnode_t* node, int indent){
   if(node->right)
     print_node(node->right, indent+2);
 }
-char* code="fn main(){ \
+char* code="\
+extern fn print();     \
+fn main(){	       \
  let i=1;	       \
  i=i+1;		       \
  if i<1 {	       \
@@ -29,6 +31,10 @@ char* code="fn main(){ \
  }else{		       \
   let a=4;	       \
  }		       \
+while i<5 {	       \
+  i=i+1;	       \
+  break;	       \
+}		       \
  return 0;	       \
 }";
 int main(int argc, char** argv){
@@ -48,6 +54,7 @@ int main(int argc, char** argv){
   size_t len=ftell(f);
   fseek(f, 0, SEEK_SET);
   char* source=malloc(len+1);
+  memset(source, 0, len+1);
   size_t read=fread(source, len, 1, f);
   if (read<1) {
     printf("error while reading file:%zu<%zu.\n",read,1l);

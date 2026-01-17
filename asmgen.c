@@ -11,7 +11,7 @@
   do {                                                                         \
     char *line = malloc(64);                                                   \
     assert(line);                                                              \
-    sprintf(line, fmt, ##__VA_ARGS__);                                         \
+    snprintf(line, 64, fmt, ##__VA_ARGS__);				\
     list_append(list_asm, line);                                               \
   } while (0);
 char *alloc_reg(list_t* regs, char* varname) {
@@ -34,6 +34,7 @@ void free_reg(list_t* regs, char* varname){
   }
 }
 
+static size_t stk_argsz=0;
 void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table){
   switch (intercode->type) {
   case CODE_DEF_FUNC: {
@@ -114,7 +115,7 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
   }
 #define JMP(codenoprefix)					\
     case CODE_##codenoprefix: {					\
-      ASM("%s %s\n",#codenoprefix,intercode->operand1str);	\
+      ASM("%s near %s\n",#codenoprefix,intercode->operand1str);	\
       break;							\
   }
     JMP(JE);
@@ -148,11 +149,16 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
     break;
   }
   case CODE_PUSHARG: {
-    // todo: push arg
+    // push arg
+    ASM("push %s\n",intercode->operand1str);
+    stk_argsz+=8;
     break;
   }
   case CODE_FUNCCALL: {
     ASM("call %s\n",intercode->operand1str);
+    // restore the stacks used to pass args
+    ASM("add rsp,%zu\n",stk_argsz);
+    stk_argsz=0;
     break;
   }
   default:
@@ -169,6 +175,13 @@ reg_tmpvar_pair_t* create_regvar(char* reg){
   stru->var=NULL;
   return stru;
 }
+#define ASMU(codes,fmt, ...)			\
+  do {						\
+    char *line = malloc(64);			\
+    assert(line);				\
+    snprintf(line, 64, fmt, ##__VA_ARGS__);	\
+    list_append(codes, line);			\
+  } while (0);
 char* asm_gen(list_t* intercodes){
   list_t asm_codes=create_list(20, sizeof(char*));
   size_t stk=0;
@@ -179,6 +192,19 @@ char* asm_gen(list_t* intercodes){
   list_append(&reg_table, create_regvar("rdx"));
   list_append(&reg_table, create_regvar("rdi"));
   list_append(&reg_table, create_regvar("rsi"));
+  // something
+  ASMU(&asm_codes, "bits 64\n");
+  ASMU(&asm_codes, "default rel\n");  
+  // first move the global variables to the data section
+  ASMU(&asm_codes,"[section .data]\n");
+  for (size_t i=0; i < intercodes->len; ++i) {
+    intercode_t* code=list_get(intercodes, i);
+    if(code->type==CODE_ALLOC_GLOBAL){
+      asm_translate(&asm_codes, code, &stk, &reg_table);
+      list_remove(intercodes, i);
+    }
+  }
+  ASMU(&asm_codes, "[section .text]\n");
   for (size_t i=0; i < intercodes->len; ++i) {
     asm_translate(&asm_codes, list_get(intercodes, i),&stk,&reg_table);    
   }

@@ -54,9 +54,33 @@ intercode_t* create_code(intercode_type_t type, char* operand1, char* operand2, 
       (intercode_t){.type = type, .label = operand1, .operand2 = (u64)operand2, .operand3=(u64)operand3};  
   return __heap_code__;
 }
+char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer);
 
 #define CODE(code_list, type, op1, op2, op3)                                   \
   list_append(code_list, create_code(type, op1, op2, op3))
+size_t gen_arglist_node(astnode_t *node, list_t *code_list, int tmpnum,
+                        int layer) {
+  size_t num_args=0;
+  // used to gen intercode for commalist in NODE_FUNCCALL
+  switch (node->node_type) {
+  case NODE_COMMALIST: {
+    // more args
+    num_args+=gen_arglist_node(node->left, code_list, tmpnum, layer);
+    num_args+=gen_arglist_node(node->right, code_list, tmpnum, layer);    
+    break;
+  }
+  default:{
+    // an arg
+    char *arg = gen_node(node, code_list, tmpnum, layer);
+    // push the arg
+    CODE(code_list, CODE_PUSHARG, arg, 0, 0);
+    // one arg    
+    num_args=1;
+    break;
+  }
+  }
+  return num_args;
+}
 /// generate intercode of a node.
 /// returns the name of the tmp var which stores the value of the expression if
 /// the translated node is an expression
@@ -120,7 +144,15 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     list_append(code_list, code);                                              \
     return res;                                                                \
     break;                                                                     \
-  }    
+  }
+    
+  case NODE_COMMALIST: {
+    // return the value of the rightest part
+    gen_node(node->left, code_list, tmpnum, layer + 1);
+    char *rexpr = gen_node(node->right, code_list, tmpnum, layer + 1);        
+    return rexpr;
+    break;
+  }
     
     TWOOP_INTERCODE(ADD)
       TWOOP_INTERCODE(SUB)
@@ -173,9 +205,11 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   }
   case NODE_FUNCCALL: {
     // gen arglist first
-    gen_node(node->right, code_list, tmpnum,layer+1);
+    size_t num_args=0;
+    num_args=gen_arglist_node(node->right, code_list, tmpnum,layer+1);
     // then call the function
-    CODE(code_list, CODE_FUNCCALL, node->left->value, 0, 0);    
+    CODE(code_list, CODE_FUNCCALL, node->left->value, 0, 0);
+    
     break;
   }
   case NODE_NONE:case NODE_ARGLIST: 

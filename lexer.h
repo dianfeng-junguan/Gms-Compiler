@@ -13,6 +13,8 @@ typedef enum {
   ELSE,
   WHILE,
   RETURN,
+  EXTERN,
+  BREAK,
   //whitespace
   WHITESPACE,
   //separator

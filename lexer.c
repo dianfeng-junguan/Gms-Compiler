@@ -68,23 +68,33 @@ bool number_after(char* str, list_t* tokens, filepos_t pos){
 }
 
 bool word_begin(char c) { return isalpha(c) || c == '_'; }
-bool word_allowed(char c, char* start, size_t offset) { return isalpha(c) || c == '_'; }
+bool word_allowed(char c, char *start, size_t offset) {
+  return isalpha(c) || c == '_';
+}
+typedef struct{
+  char* str;
+  tokentype_t tok;
+} str_tok_pair_t;
+str_tok_pair_t keywords[]={
+  {"fn",FN},
+  {"if",IF},
+  {"else",ELSE},
+  {"while",WHILE},
+  {"return",RETURN},
+  {"let",LET},
+  {"extern",EXTERN},
+  {"break",BREAK},
+};
 bool word_after(char* str, list_t *tokens, filepos_t pos) {
   // check if it is keyword
   token_t* tok=NULL;
-  if(strcmp(str, "fn")==0){
-    tok=create_token(FN, str, pos);
-  }else if (strcmp(str, "if")==0) {
-    tok=create_token(IF, str, pos);
-  }else if (strcmp(str, "else")==0) {
-    tok=create_token(ELSE, str, pos);
-  }else if (strcmp(str, "while")==0) {
-    tok=create_token(WHILE, str, pos);
-  }else if (strcmp(str, "return")==0) {
-    tok=create_token(RETURN, str, pos);
-  }else if (strcmp(str, "let")==0) {
-    tok=create_token(LET, str, pos);
-  }else{
+  for (size_t i=0; i < sizeof(keywords)/sizeof(str_tok_pair_t); ++i) {
+    if(strcmp(str,keywords[i].str)==0){
+      tok=create_token(keywords[i].tok, str, pos);
+    }
+  }
+  if(!tok)
+  {
     //identifier
     tok=create_token(IDENTIFIER, str, pos);
   }
