@@ -13,7 +13,7 @@
 
 
 void print_node(astnode_t* node, int indent){
-  printf("%*s%s=%s@%d\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer);
+  printf("%*s%s=%s@%d type %d\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer, node->value_type);
   if(node->left)
     print_node(node->left, indent+2); 
   if(node->right)
@@ -77,7 +77,8 @@ int main(int argc, char** argv){
   astnode_t asttree=do_parse(&tokens);
   if(!do_sematic(&asttree)){
     return -1;
-  }  
+  }
+  
 #ifdef DEBUG
   print_node(&asttree, 0);
 #endif

@@ -15,6 +15,9 @@ typedef enum {
   RETURN,
   EXTERN,
   BREAK,
+  // type
+  INT,
+  STRING,
   //whitespace
   WHITESPACE,
   //separator
@@ -51,15 +54,17 @@ typedef enum {
   NOT,// this is also a bit operator
   //values
   IDENTIFIER,
-  CONSTANT,
+  CONSTANT_NUMBER,
+  CONSTANT_STRING,
   // below are types used in parser and are not allow to used in lexer.
   TOKEN_VALUE,
   TOKEN_ID,
+  TOKEN_TYPEKW,
   TOKEN_EXPR,
   TOKEN_STATEMENTS,
   TOKEN_ARGLIST,
 } tokentype_t;
-
+#define IS_CONST_TOK(tok) ((tok)->token_type==CONSTANT_NUMBER||(tok)->token_type==CONSTANT_STRING)      
 typedef struct {
   tokentype_t token_type;
   char* value;

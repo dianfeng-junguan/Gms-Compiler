@@ -78,6 +78,7 @@ astnode_t* create_node(astnode_type_t type, astnode_t* left, astnode_t* right, c
   node->value = value;
   node->syms=create_list(0, sizeof(symbol_t));
   node->position = position;
+  node->value_type = TYPE_VOID;
   node->layer = 0;
   return node;  
 }
@@ -114,8 +115,23 @@ astnode_t *prefix_handler_id(token_t *lefttoken, list_t *tokens, size_t *iter) {
 }
 astnode_t* prefix_handler_const(token_t *lefttoken, list_t *tokens, size_t* iter){
   // LOG(VERBOSE, "%s ",lefttoken->value);
-  (*iter)++;  
-  return create_node(NODE_CONSTANT, NULL, NULL, lefttoken->value, lefttoken->position);
+  (*iter)++;
+  astnode_t *node = create_node(NODE_CONSTANT, NULL, NULL, lefttoken->value,
+                                lefttoken->position);
+  switch (lefttoken->token_type) {
+  case CONSTANT_NUMBER: {
+    node->value_type=TYPE_INT;
+    break;
+  }
+  case CONSTANT_STRING: {
+    node->value_type=TYPE_STRING;
+    break;
+  }
+  default:
+    node->value_type=TYPE_VOID;
+    break;
+  }
+  return node;
 }
 astnode_t* handler_addsub(astnode_type_t type,astnode_t* lhs, astnode_t* rhs){  
   astnode_t* zero=create_node(NODE_CONSTANT, NULL, NULL, "0", lhs->position);  
@@ -234,7 +250,8 @@ astnode_t *infix_handler_OPENPAREN(astnode_t *left,
 }
 prefix_handler_t prefix_handlers[50] = {
     [IDENTIFIER] = prefix_handler_id,
-    [CONSTANT] = prefix_handler_const,
+    [CONSTANT_NUMBER] = prefix_handler_const,
+    [CONSTANT_STRING] = prefix_handler_const,
     // operators
     [ADD] = prefix_handler_add,
     [SUB] = prefix_handler_minus,
@@ -399,13 +416,29 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
     }
     case TOKEN_VALUE: {
       // we want an id or const token.
-      token_t *tok=list_get(tokens, backupiter);
-      if(tok&&(tok->token_type==IDENTIFIER||tok->token_type==CONSTANT)){
+      token_t *tok = list_get(tokens, backupiter);
+      if(tok&&(tok->token_type==IDENTIFIER||IS_CONST_TOK(tok))){
 	// what we want
-        astnode_t *vnode =
-            create_node(tok->token_type == IDENTIFIER ? NODE_IDENTIFIER
-                                                      : NODE_CONSTANT
-                                                            , NULL, NULL, tok->value, tok->position);
+        astnode_t *vnode = create_node(
+            tok->token_type == IDENTIFIER ? NODE_IDENTIFIER : NODE_CONSTANT,
+            NULL, NULL, tok->value, tok->position);
+	if(vnode->node_type==NODE_CONSTANT){
+	  switch (tok->token_type) {
+	  case CONSTANT_NUMBER: {
+	    vnode->value_type=TYPE_INT;
+	    break;
+          }
+	  case CONSTANT_STRING: {
+	    vnode->value_type=TYPE_STRING;
+	    break;
+          }        
+          default:
+            cry_errorf(SENDER_PARSER, tok->position,
+                       "unknown constant type of %s", tok->value);
+	    return NULL;
+	    break;
+	  }
+	}
 	backupiter++;
 	LOG(VERBOSE, "parse_by_recipe.TOKE_VALUE ok\n");
 	list_append(&collected, vnode);
@@ -417,7 +450,7 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
       break;
     }
     case TOKEN_ID: {
-      // we want a id or const token.
+      // we want a id token.
       token_t *tok=list_get(tokens, backupiter);
       if(tok&&(tok->token_type==IDENTIFIER)){
 	// what we want
@@ -469,6 +502,34 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
       list_append(&collected, arglist);
       break;
     }
+    case TOKEN_TYPEKW: {
+      token_t *tok=list_get(tokens, backupiter);
+      if(tok&&(tok->token_type==INT||tok->token_type==STRING)){
+	// what we want
+        astnode_t *vnode =
+            create_node(NODE_TYPEKW, NULL, NULL, tok->value, tok->position);
+       switch (tok->token_type) {
+       case INT: {
+	 vnode->value_type=TYPE_INT;
+	 break;
+       }
+       case STRING: {
+	 vnode->value_type=TYPE_STRING;
+	 break;
+       }
+       default:
+	 vnode->value_type=TYPE_VOID;
+	 break;
+       } 
+	backupiter++;
+	LOG(VERBOSE, "parse_by_recipe.TOKEN_TYPEKW ok\n");
+	list_append(&collected, vnode);
+      }else{
+	LOG(VERBOSE, "parse_by_recipe.TOKEN_TYPEKW stopped\n");
+	return NULL;
+      }
+      break;
+    }      
     default:{
       // we want a specific type of token.      
       if (!peek_check_token(tokens, backupiter, recipe[i])) {
@@ -623,20 +684,22 @@ astnode_t* parse_return(list_t* tokens, size_t* iter){
 }
 astnode_t* parse_function(list_t* tokens, size_t* iter){
   tokentype_t rec[] = {FN,         TOKEN_ID,  OPENPAREN,        TOKEN_ARGLIST,
-                       CLOSEPAREN, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
+                       CLOSEPAREN, COLON, TOKEN_TYPEKW, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
   token_t *starttok=list_get(tokens, *iter);
-  list_t *collected = parse_by_recipe(tokens, iter, rec, 8);  
+  list_t *collected = parse_by_recipe(tokens, iter, rec, 10);  
   if (!collected||!starttok) {
     LOG(VERBOSE, "parse_function failed.\n");
     return NULL;
   }
   astnode_t* id=list_get(collected, 1);
-  astnode_t* args=list_get(collected, 3);
-  astnode_t *body = list_get(collected, 6);
+  astnode_t *args = list_get(collected, 3);
+  astnode_t *retkw = list_get(collected, 6);
+  astnode_t *body = list_get(collected, 8);
   // we need an extra leafholder to hold the rest two nodes together.
   astnode_t *two_holder = create_node(NODE_LEAFHOLDER, args, body, NULL, starttok->position);
   astnode_t *funcnode =
       create_node(NODE_FUNCTION, id, two_holder, NULL, starttok->position);
+  funcnode->value_type = retkw->value_type;
   free(collected);  
   LOG(VERBOSE, "parsed function declaration.\n");
   return funcnode;
@@ -660,10 +723,10 @@ astnode_t* parse_singleexpr(list_t* tokens, size_t* iter){
 }
 astnode_t* parse_declaration(list_t* tokens, size_t* iter){
   /* four patterns:
-     let id;
-     fn func;
-     extern let id;
-     extern fn func;
+     let id:type;
+     fn func(name type,...):type;
+     extern let id:type;
+     extern fn func:type;
   */
   bool is_extern = false;
   size_t backupiter=*iter;
@@ -677,8 +740,8 @@ astnode_t* parse_declaration(list_t* tokens, size_t* iter){
     nodetype = NODE_DECLARE_VAR;
     backupiter++;
 
-    tokentype_t recipe[] = {TOKEN_ID, SEMICOLON};
-    list_t *collected = parse_by_recipe(tokens, &backupiter, recipe, 2);
+    tokentype_t recipe[] = {TOKEN_ID, COLON, TOKEN_TYPEKW, SEMICOLON};
+    list_t *collected = parse_by_recipe(tokens, &backupiter, recipe, 4);
     if(!collected){
       LOG(VERBOSE, "parse_declaration failed bc no id or semicolon after id.\n");
       return NULL;
@@ -691,8 +754,8 @@ astnode_t* parse_declaration(list_t* tokens, size_t* iter){
     nodetype = NODE_DECLARE_FUNC;
     backupiter++;
 
-    tokentype_t recipe[] = {TOKEN_ID, OPENPAREN, TOKEN_ARGLIST, CLOSEPAREN, SEMICOLON};
-    list_t *collected = parse_by_recipe(tokens, &backupiter, recipe, 5);
+    tokentype_t recipe[] = {TOKEN_ID, OPENPAREN, TOKEN_ARGLIST, CLOSEPAREN, COLON, TOKEN_TYPEKW, SEMICOLON};
+    list_t *collected = parse_by_recipe(tokens, &backupiter, recipe, 7);
     if(!collected){
       LOG(VERBOSE, "parse_declaration failed bc no id or semicolon after id.\n");
       return NULL;

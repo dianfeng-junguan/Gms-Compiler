@@ -7,6 +7,28 @@
 #include <stddef.h>
 #include "err.h"
 #include "stdbool.h"
+#include "utils.h"
+
+bool string_begin(char c){
+  return c=='\"';
+}
+static bool met_quote=false;
+bool string_allowed(char c, char *scanned, size_t offset) {
+  if(c=='\"'&&!met_quote){
+    met_quote=true;
+    return true;
+  }
+  if(met_quote){
+    met_quote=false;
+    return false;
+  }
+  return c != '\"';
+}
+bool string_after(char* str, list_t* tokens, filepos_t pos){
+  token_t *tok = create_token(CONSTANT_STRING, str, pos);
+  list_append(tokens, tok);
+  return true;
+}
 
 bool number_begin(char c){
   return isdigit(c);
@@ -58,7 +80,7 @@ bool number_after(char* str, list_t* tokens, filepos_t pos){
   if(flag){   
     // create the token
     printf("Creating number token:%s\n",str);
-    token_t* tok=create_token(CONSTANT, str, pos);
+    token_t* tok=create_token(CONSTANT_NUMBER, str, pos);
     list_append(tokens, tok);
     return true;
   }else{
@@ -84,6 +106,9 @@ str_tok_pair_t keywords[]={
   {"let",LET},
   {"extern",EXTERN},
   {"break",BREAK},
+  
+  {"int",INT},
+  {"string",STRING},
 };
 bool word_after(char* str, list_t *tokens, filepos_t pos) {
   // check if it is keyword
@@ -179,7 +204,7 @@ bool operator_after(char* str, list_t *tokens, filepos_t pos) {
 }
 
 bool separator_begin(char c) {
-  return c==';'||c==':'||c=='\''||c=='\"'||
+  return c==';'||c==':'||c=='\''||
     c=='{'||c=='}'||c=='('||c==')'||c==',';
 }
 bool separator_allowed(char c, char* start, size_t offset) {
@@ -187,14 +212,13 @@ bool separator_allowed(char c, char* start, size_t offset) {
     // we want single-char separator
     return false;
   }
-  return c == ';' || c == ':' || c == '\'' || c == '\"' || c == '{' ||
+  return c == ';' || c == ':' || c == '\'' ||  c == '{' ||
          c == '}' || c == '(' || c == ')' || c == ',';
 } 
 static str_sep_pair_t separators[]={
   { ";", SEMICOLON},
   { ":", COLON},
   { "\'", QUOTE},
-  { "\"", DOUBLE_QUOTE},
   { "{", OPENBRACE},
   { "}", CLOSEBRACE}, 
   { "(", OPENPAREN},
@@ -214,6 +238,7 @@ bool separator_after(char* str, list_t *tokens, filepos_t pos) {
 }
 lex_recipe_t scan_recipe[]={
   {number_begin, number_allowed, number_after},// costant: number,
+  {string_begin, string_allowed, string_after},// costant: string,
   {word_begin, word_allowed, word_after}, // id and keywords,
   {whitespace_begin, whitespace_allowed, whitespace_after}, // whitespace,
   {operator_begin, operator_allowed, operator_after}, // operator,
@@ -258,9 +283,9 @@ list_t do_lex(char *str){
     bool token_flag=false;
     for (size_t i=0; i < sizeof(scan_recipe)/sizeof(lex_recipe_t); ++i) {
       if(scan_recipe[i].begin(str[ptr])){
-	printf("begin with recipe %d, ptr=%d\n",i,ptr);
+	printf("begin with recipe %zu, ptr=%zu\n",i,ptr);
 	// beginning allowed
-	size_t pioneer=ptr;
+	size_t pioneer=ptr+1;
 	// scan the whole thing
 	while (pioneer<len && scan_recipe[i].scan(str[pioneer], &str[ptr], pioneer-ptr)) {
 	  pioneer++;
@@ -291,7 +316,7 @@ list_t do_lex(char *str){
       }
     }
     if(!token_flag){ 
-      cry_error(SENDER_LEXER,"met an token-untranslatable str at line %zu, column %zu\n",(filepos_t){line,col});
+      cry_errorf(SENDER_LEXER, ((filepos_t){.line=line,.column=col}),"met an token-untranslatable str\n");
       break;
     }
   }

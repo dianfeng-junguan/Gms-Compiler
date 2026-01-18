@@ -53,6 +53,11 @@ typedef enum {
   NODE_TYPEKW
 } astnode_type_t;
 
+typedef enum {
+  TYPE_VOID=0,
+  TYPE_INT,
+  TYPE_STRING,
+}symbol_type_t;
 typedef struct _astnode_t{
   astnode_type_t node_type;
   struct _astnode_t* left;
@@ -65,14 +70,21 @@ typedef struct _astnode_t{
   // layer here means the depth of the scope.
   // used to differentiate symbols defined at different depths of scopes.
   int layer;
+  // used to indicate the type of constant or expression
+  symbol_type_t value_type;
 } astnode_t;
-typedef enum{
+typedef enum {
   SYMBOL_VARIABLE,
   SYMBOL_FUNCTION,
-}symbol_type_t;
+} symbol_kind_t;
 typedef struct{
   char* name;
-  symbol_type_t type;
+  /// this indicates whether it is a variable or function
+  symbol_kind_t type;
+  union{
+    symbol_type_t sym_type;
+    symbol_type_t return_type;
+  };
   int layer;
   unsigned long long value;
   int is_extern;

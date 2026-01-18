@@ -3,6 +3,7 @@
 #include "err.h"
 #include "utils.h"
 #include <assert.h>
+#include <ctype.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -20,35 +21,27 @@ bool is_symtab_dup(list_t* syms, char* name){
 /**
    reminder: name must lives longer than the symbol!!!
  **/
-symbol_t* create_symbol(char* name, symbol_type_t type, int layer){
+symbol_t* create_symbol(char* name, symbol_kind_t type, symbol_type_t value_type, int layer){
   symbol_t* sym=malloc(sizeof(symbol_t));
   assert(sym);
   sym->name=name;
   sym->type=type;
+  sym->sym_type=value_type;
   sym->layer=layer;
   sym->value=0;  
   sym->is_extern=false;
   return sym;
 }
-symbol_t* create_extern_symbol(char* name, symbol_type_t type, int layer){
-  symbol_t* sym=malloc(sizeof(symbol_t));
-  assert(sym);
-  sym->name=name;
-  sym->type=type;
-  sym->layer=layer;
-  sym->value=0;
-  sym->is_extern=true;
-  return sym;
-}
-size_t while_depth=0;
+size_t while_depth = 0;
+symbol_type_t function_rettype = TYPE_VOID;
+bool in_function=false;
 bool check_statement(astnode_t* node, list_t* symbols, int layer){
   bool success=true;
   filepos_t pos=node->position;
   node->layer=layer;
   switch (node->node_type) {    
   case NODE_CONSTANT:{
-    // for now we do not check it.
-    
+    // 
     break;
   } 
   case NODE_IDENTIFIER: {
@@ -59,6 +52,8 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       assert(node->value);
       if(strcmp(node->value, sym->name)==0){
 	// found
+	LOG(REGULAR, "identifier found defined symbol %s, type %d\n", node->value, sym->sym_type);
+	node->value_type=sym->sym_type;
 	f=true;
       }
     }
@@ -66,7 +61,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       // undefined
       cry_errorf(SENDER_SEMATIC, pos, "undefined variable:%s\n", node->value);
       success=false;
-    }
+    }        
     break;
   }
     
@@ -83,7 +78,8 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       success=false;
     }
     // ok. add it to the symtab.
-    list_append(symbols, create_symbol(node->left->value, SYMBOL_VARIABLE, layer));
+    /* TODO: add type commenting of declaration (let a:int;) */
+    list_append(symbols, create_symbol(node->left->value, SYMBOL_VARIABLE, TYPE_INT, layer));
     break;
   }
   case NODE_EXTERN: {
@@ -95,13 +91,17 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     }else{
       // check redefinition
       if(is_symtab_dup(&node->syms, node->left->value)){
-	cry_error(SENDER_SEMATIC, "variable redefinition", pos);
+	cry_error(SENDER_SEMATIC, "variable redeclaration", pos);
 	success=false;
       }
       // ok. add it to the symtab.
-      list_append(symbols, create_extern_symbol(node->left->value,
+      /* TODO: add type commenting of declaration (let a:int;) */
+      symbol_t* extsym= create_symbol(node->left->value,
 						(node->left->node_type==NODE_DECLARE_VAR?
-						SYMBOL_VARIABLE:SYMBOL_FUNCTION), layer));
+						 SYMBOL_VARIABLE:SYMBOL_FUNCTION),
+				     TYPE_INT,layer);
+      extsym->is_extern=true;
+      list_append(symbols,extsym);
     }    
     break;
   }
@@ -112,13 +112,23 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     if(node->left->node_type!=NODE_IDENTIFIER){
       cry_error(SENDER_SEMATIC, "expected identifier at the left hand side of =", pos);
       success=false;
+      break;
     }
     if(is_symtab_dup(&node->syms, node->left->value)){
       cry_error(SENDER_SEMATIC, "variable redefinition", pos);
       success=false;
+      break;
+    }
+    // check rhs
+    if(!check_statement(node->right, symbols, layer)){
+      success=false;
+      break;
     }
     // ok. add it to the symtab.
-    list_append(symbols, create_symbol(node->left->value, SYMBOL_VARIABLE, layer));
+    /* TODO: add type commenting */
+    // if there is no type explicitly written, we infer the type
+    LOG(REGULAR, "defining %s of type %d\n",node->left->value, node->right->value_type);
+    list_append(symbols, create_symbol(node->left->value, SYMBOL_VARIABLE, node->right->value_type, layer));
     break;
   }
   case NODE_FUNCTION: {
@@ -132,14 +142,19 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       cry_error(SENDER_SEMATIC, "function name redefinition", pos);
     }    
     // ok. add the function to the symtab.
-    list_append(symbols, create_symbol(node->left->value, SYMBOL_FUNCTION, layer));
+    /* TODO: add type commenting */
+    list_append(symbols, create_symbol(node->left->value, SYMBOL_FUNCTION, TYPE_INT, layer));
     // check the inside
     // init the function scope symtab first: inherit the parent symtab.
     init_list(&node->syms, symbols->capacity, symbols->element_size);
     list_copy(&node->syms, symbols);
+    in_function=true;
+    function_rettype=node->value_type;
     if(node->right){
       check_statement(node->right, &node->syms, layer+1);
-    }     
+    }
+    function_rettype=TYPE_VOID;
+    in_function=false;
     break;
   }
   case NODE_LEAFHOLDER:
@@ -163,14 +178,19 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     }
     if(is_symtab_dup(symbols, node->left->value)){
       cry_error(SENDER_SEMATIC, "function name redefinition", pos);
-    }    
+    }
+    symbol_type_t argtype=TYPE_VOID;
+    if(strcmp(node->right->value, "int")==0){
+      argtype=TYPE_INT;
+    }else if(strcmp(node->right->value, "string")==0){
+      argtype=TYPE_STRING;
+    }
     // ok. add it to the symtab.
-    list_append(symbols, create_symbol(node->left->value, SYMBOL_FUNCTION, layer));
+    list_append(symbols, create_symbol(node->left->value, SYMBOL_FUNCTION, argtype, layer));
     break;
   }
     
   case NODE_ELSEIF:
-    // todo: check if it follows ifnode    
   case NODE_IF: 
     // check condition expr
     if(!node->left||!check_statement(node->left, symbols, layer)){
@@ -187,7 +207,6 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     }
     break;
   case NODE_ELSE: {
-    // todo: check if follows ifnode or ifelsenode
     // the body of the if is a scope
     init_list(&node->syms, 10, sizeof(symbol_t));
     list_copy(&node->syms, symbols);
@@ -195,7 +214,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     if(node->left)
       check_statement(node->left, &node->syms,layer+1);
     else{
-      cry_error(SENDER_SEMATIC, "no if body", pos);
+      cry_error(SENDER_SEMATIC, "no else body", pos);
     }
     break;
   }
@@ -219,9 +238,25 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     break;
   }
   case NODE_RETURN: {
+    // check if in function
+    if(!in_function){
+      cry_error(SENDER_SEMATIC, "return not in function", pos);
+      success=false;
+      break;
+    }
     // check right expr
-    if(node->right){
+    symbol_type_t rett=TYPE_VOID;
+    if(node->left){
       check_statement(node->left, symbols,layer);
+      rett=node->left->value_type;
+      success=false;
+      break;
+    }
+    // check whether the return type meets the function type
+    if(function_rettype!=rett){
+      cry_errorf(SENDER_SEMATIC, pos, "return type does not meet the function type");
+      success=false;
+      break;
     }
     // its ok if there is no return expr
     break;
@@ -238,13 +273,25 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     if(node->left){
       check_statement(node->left, symbols,layer);
     }else{
-      cry_error(SENDER_SEMATIC, "no if body", pos);
+      cry_error(SENDER_SEMATIC, "no left expression", pos);
+      success=false;
+      break;
     }
     if(node->right){
       check_statement(node->right, symbols,layer);
     }else{
-      cry_error(SENDER_SEMATIC, "no if body", pos);
+      cry_error(SENDER_SEMATIC, "no right expression", pos);
+      success=false;
+      break;
     }
+    // infer the type of the expression
+    if(node->left->value_type!=node->right->value_type){
+      cry_error(SENDER_SEMATIC, "left expression type and right expression type are not the same", pos);
+      success=false;
+      break;
+    }
+    // infer
+    node->value_type=node->left->value_type;
     break;
   }
   case NODE_BREAK: {
