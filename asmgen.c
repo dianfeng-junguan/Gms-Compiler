@@ -54,6 +54,7 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
     char* initv=intercode->operand2str;
     if(!initv)initv="0";
     ASM("%s: dq %s\n",intercode->label,initv);
+    ASM("%%define %s qword [%s]\n",intercode->label, intercode->label);
     break;
   }
   case CODE_ALLOC_LOCAL: {
@@ -163,10 +164,30 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
     break;
   }
   case CODE_FUNCCALL: {
+    /* to pass args. we store the value of tmpvars into stack and then mov it to the registers before
+     calling the func*/
+    ASM("push rdi\npush rsi\npush rdx\npush rcx\npush r8\npush r9\n");
+    char* regs[]={"rdi","rsi","rdx","rcx","r8","r9"};
+    for (size_t i=0; i < stk_argsz/8; ++i) {
+      // we copy the part that overflows registers reversely to meet system V
+      // since the earlier pushargs are from left to right
+      ASM("mov %s,[rsp+48+%zu]\n",(i<6?regs[i]:"rax"),i*8);
+      if(i>=6){
+	ASM("push rax\n");
+      }
+    }
     ASM("call %s\n",intercode->operand1str);
+    if(stk_argsz>48){
+      ASM("add rsp,%zu\n",stk_argsz-48);
+    }
     // restore the stacks used to pass args
+    ASM("pop r9\npop r8\npop rcx\npop rdx\npop rsi\npop rdi\n");
     ASM("add rsp,%zu\n",stk_argsz);
     stk_argsz=0;
+    break;
+  }
+  case CODE_STORE_RETV: {
+    ASM("mov %s,rax\n",intercode->operand1str);
     break;
   }
   default:

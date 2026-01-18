@@ -34,7 +34,8 @@ typedef enum {
   CODE_LABEL,
       
   CODE_PUSHARG,
-  CODE_FUNCCALL
+  CODE_FUNCCALL,
+  CODE_STORE_RETV,
   //
 } intercode_type_t;
 typedef unsigned long long u64;

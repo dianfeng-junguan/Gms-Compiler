@@ -243,7 +243,9 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     num_args=gen_arglist_node(node->right, code_list, tmpnum,layer+1);
     // then call the function
     CODE(code_list, CODE_FUNCCALL, node->left->value, 0, 0);
-    
+    char* rettmpvar=make_tmpvar(tmpnum+1);
+    CODE(code_list, CODE_STORE_RETV, rettmpvar, 0, 0);
+    return rettmpvar;
     break;
   }
   case NODE_NONE:case NODE_ARGLIST: 
@@ -388,14 +390,17 @@ list_t gen_intercode(astnode_t* ast){
   return codes;
 }
 static char *codetype_strs[] = {
-  [CODE_DEF_FUNC]="CODE_DEF_FUNC",
-  [CODE_DEF_FUNC_END]="CODE_DEF_FUNC_END",
-  [CODE_ALLOC_GLOBAL]="CODE_ALLOC_GLOBAL",
-  [CODE_ALLOC_LOCAL]="CODE_ALLOC_LOCAL",
-  [CODE_ALLOC_TMP]="CODE_ALLOC_TMP",
-  [CODE_FREE]="CODE_FREE",
-  [CODE_RETURN]="CODE_RETURN",
-  [CODE_MOV]="CODE_MOV",
+    [CODE_DEF_FUNC] = "CODE_DEF_FUNC",
+    [CODE_DEF_FUNC_END] = "CODE_DEF_FUNC_END",
+    [CODE_ALLOC_GLOBAL] = "CODE_ALLOC_GLOBAL",
+    [CODE_ALLOC_LOCAL] = "CODE_ALLOC_LOCAL",
+    [CODE_ALLOC_TMP] = "CODE_ALLOC_TMP",
+    [CODE_FREE] = "CODE_FREE",
+    [CODE_RETURN] = "CODE_RETURN",
+    [CODE_MOV] = "CODE_MOV",
+
+    [CODE_DECLARE]="CODE_DECLARE",
+    [CODE_EXTERN_DECLARE]="CODE_EXTERN_DECLARE",    
 
   // operators
   [CODE_ADD]="CODE_ADD",
@@ -420,6 +425,7 @@ static char *codetype_strs[] = {
   [CODE_SCOPE_END]="CODE_SCOPE_END",
   [CODE_PUSHARG]="CODE_PUSHARG",
   [CODE_FUNCCALL]="CODE_FUNCCALL",
+  [CODE_STORE_RETV]="CODE_STORE_RETV",
 };
 char *codetype_tostr(intercode_type_t type) {
   return codetype_strs[type];
