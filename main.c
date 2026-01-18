@@ -20,22 +20,22 @@ void print_node(astnode_t* node, int indent){
     print_node(node->right, indent+2);
 }
 char* code="\
-extern fn print();     \
-fn main(){	       \
- let i=1;	       \
- i=i+1;		       \
- if i<1 {	       \
-  let a=2;	       \
- }else if i>=1{	       \
-  let a=3;	       \
- }else{		       \
-  let a=4;	       \
- }		       \
-while i<5 {	       \
-  i=i+1;	       \
-  break;	       \
-}		       \
- return 0;	       \
+extern fn print();     \n\
+fn main(){	       \n\
+ let i=1;	       \n\
+ i=i+1;		       \n\
+ if i<1 {	       \n\
+  let a=2;	       \n\
+ }else if i>=1{	       \n\
+  let a=3;	       \n\
+ }else{		       \n\
+  let a=4;	       \n\
+ }		       \n\
+while i<5 {	       \n\
+  i=i+1;	       \n\
+  break;	       \n\
+}		       \n\
+ return 0;	       \n\
 }";
 int main(int argc, char** argv){
 #ifndef USE_TESTCODE
@@ -75,7 +75,9 @@ int main(int argc, char** argv){
   }
 #endif
   astnode_t asttree=do_parse(&tokens);
-  do_sematic(&asttree);  
+  if(!do_sematic(&asttree)){
+    return -1;
+  }  
 #ifdef DEBUG
   print_node(&asttree, 0);
 #endif
@@ -83,10 +85,13 @@ int main(int argc, char** argv){
 #ifdef DEBUG
   for (size_t i=0; i < intercodes.len; ++i) {
     intercode_t* code=list_get(&intercodes, i);
-    printf("%s %s,%s,%s\n", codetype_tostr(code->type), code->varname, code->operand2, code->store_var);
+    printf("%s %s,%s,%s\n", codetype_tostr(code->type), code->varname, code->operand2str, code->store_var);
   }
 #endif
   char* asmcode=asm_gen(&intercodes);
+  if(!asmcode){
+    return -1;
+  }
 #ifdef DEBUG
   printf("asm:\n%s",asmcode);
 #endif

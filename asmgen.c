@@ -113,6 +113,14 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
     ASM("cmp %s,%s\n",intercode->operand1str, intercode->operand2str);
     break;
   }
+  case CODE_DECLARE: {
+    // do nothing
+    break;
+  }
+  case CODE_EXTERN_DECLARE: {
+    ASM("extern %s\n",intercode->operand1str);
+    break;
+  }
 #define JMP(codenoprefix)					\
     case CODE_##codenoprefix: {					\
       ASM("%s near %s\n",#codenoprefix,intercode->operand1str);	\

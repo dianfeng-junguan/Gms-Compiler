@@ -14,9 +14,13 @@ typedef enum {
   NODE_ELSE,
   NODE_WHILE,
   NODE_RETURN,
+  NODE_BREAK,
 
   NODE_FUNCTION,
   NODE_DEFINITION,
+  NODE_EXTERN,
+  NODE_DECLARE_VAR,
+  NODE_DECLARE_FUNC,
   // expressions
   NODE_COMMALIST,
   // operator
@@ -71,6 +75,7 @@ typedef struct{
   symbol_type_t type;
   int layer;
   unsigned long long value;
+  int is_extern;
 }symbol_t;
 astnode_t do_parse(list_t *tokens);
 

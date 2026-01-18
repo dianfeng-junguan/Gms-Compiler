@@ -27,7 +27,7 @@ char* mklabel(){
   memcpy(lbl, ".label", 6);
   id=labelid++;
   for (size_t i=0; i < digits; ++i) {
-    *(lbl + 6 + i) = '0' + id % 10;
+    *(lbl + 6 + digits - 1 - i) = '0' + id % 10;
     id/=10;
   }
   return lbl;
@@ -80,6 +80,22 @@ size_t gen_arglist_node(astnode_t *node, list_t *code_list, int tmpnum,
   }
   }
   return num_args;
+}
+/* this is used for breaks */
+static char *while_done_lbls[32];
+static size_t while_done_ptr=0;
+void push_while_done_label(char *done_label) {
+  while_done_lbls[while_done_ptr++] = done_label;
+  assert(while_done_ptr<32);
+}
+void pop_while_done_label() {
+  while_done_ptr--;
+  assert(while_done_ptr>=0);
+}
+char *get_top_while_done_label() {
+  if (while_done_ptr == 0)
+    return NULL;
+  return while_done_lbls[while_done_ptr-1];
 }
 /// generate intercode of a node.
 /// returns the name of the tmp var which stores the value of the expression if
@@ -203,6 +219,24 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     return tmpv;
     break;
   }
+  case NODE_EXTERN: {
+    assert(node->left);
+    assert(node->left->left);
+    CODE(code_list, CODE_EXTERN_DECLARE, node->left->left->value, 0, 0);
+    break;
+  }
+  case NODE_DECLARE_VAR: {
+  case NODE_DECLARE_FUNC: {
+    CODE(code_list, CODE_DECLARE, node->left->value, 0, 0);
+    break;
+  }
+  }
+    
+
+  case NODE_BREAK: {
+    CODE(code_list, CODE_JMP, get_top_while_done_label(), 0, 0);    
+    break;
+  }
   case NODE_FUNCCALL: {
     // gen arglist first
     size_t num_args=0;
@@ -287,7 +321,9 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
       if (sym->layer==layer+1)
 	CODE(code_list, CODE_ALLOC_LOCAL, sym->name, "8" ,0);
     }
+    push_while_done_label(done_label);
     gen_node(node->right, code_list, tmpnum, layer + 1);
+    pop_while_done_label();
     // judge again
     CODE(code_list, CODE_JMP, repeat_label, 0, 0);
     CODE(code_list, CODE_LABEL, done_label, 0, 0);

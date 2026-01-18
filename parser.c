@@ -9,53 +9,60 @@
 #include <string.h>
 typedef astnode_t *(*statment_parser)(list_t *tokens, size_t *iter);
 #define NODETYPE_MAP_MAX 50
-static char* nodetype_str_map[NODETYPE_MAP_MAX] = {
-  [NODE_NONE]="NODE_NONE", 
-  // this is usally used when a node has more than 2 subnodes.
-  // we put other subnodes under a new leafholder which is under the real parent.
-  [NODE_LEAFHOLDER]="NODE_LEAFHOLDER",
-  // values
-  [NODE_CONSTANT]="NODE_CONSTANT",
-  [NODE_IDENTIFIER]="NODE_IDENTIFIER",
-  // statements
-  [NODE_IF]="NODE_IF",
-  [NODE_ELSEIF]="NODE_ELSEIF",
-  [NODE_ELSE]="NODE_ELSE",
-  [NODE_WHILE]="NODE_WHILE",
-  [NODE_RETURN]="NODE_RETURN",
+static char *nodetype_str_map[NODETYPE_MAP_MAX] = {
+    [NODE_NONE] = "NODE_NONE",
+    // this is usally used when a node has more than 2 subnodes.
+    // we put other subnodes under a new leafholder which is under the real
+    // parent.
+    [NODE_LEAFHOLDER] = "NODE_LEAFHOLDER",
+    // values
+    [NODE_CONSTANT] = "NODE_CONSTANT",
+    [NODE_IDENTIFIER] = "NODE_IDENTIFIER",
+    // statements
+    [NODE_IF] = "NODE_IF",
+    [NODE_ELSEIF] = "NODE_ELSEIF",
+    [NODE_ELSE] = "NODE_ELSE",
+    [NODE_WHILE] = "NODE_WHILE",
+    [NODE_RETURN] = "NODE_RETURN",
+    [NODE_BREAK] = "NODE_BREAK",
 
-  [NODE_FUNCTION]="NODE_FUNCTION",
-  [NODE_DEFINITION]="NODE_DEFINITION",
-  // expressions
-  [NODE_COMMALIST]="NODE_COMMALIST",
-  //operator
-  [NODE_ADD]="NODE_ADD",
-  [NODE_SUB]="NODE_SUB",
-  [NODE_MUL]="NODE_MUL",
-  [NODE_DIV]="NODE_DIV",
-  [NODE_MOD]="NODE_MOD",
-  [NODE_BITAND]="NODE_BITAND",
-  [NODE_BITOR]="NODE_BITOR",
-  [NODE_XOR]="NODE_XOR",
-  //comparator
-  [NODE_EQUAL]="NODE_EQUAL",
-  [NODE_GREATER]="NODE_GREATER",
-  [NODE_LESS]="NODE_LESS",
-  [NODE_GREATER_EQUAL]="NODE_GREATER_EQUAL",
-  [NODE_LESS_EQUAL]="NODE_LESS_EQUAL",
-  [NODE_NOT_EQUAL]="NODE_NOT_EQUAL",
-  // action
-  [NODE_ASSIGN]="NODE_ASSIGN",
-  //logic
-  [NODE_AND]="NODE_AND",
-  [NODE_OR]="NODE_OR",
-  [NODE_NOT]="NODE_NOT",
-  //
-  [NODE_FUNCCALL]="NODE_FUNCCALL",
-  // others
-  [NODE_ARGLIST]="NODE_ARGLIST",
-  [NODE_ARGPAIR]="NODE_ARGPAIR",
-  [NODE_TYPEKW]="NODE_TYPEKW"
+    [NODE_FUNCTION] = "NODE_FUNCTION",
+    [NODE_DEFINITION] = "NODE_DEFINITION",
+
+    [NODE_EXTERN]="NODE_EXTERN",
+    [NODE_DECLARE_VAR]="NODE_DECLARE_VAR",
+    [NODE_DECLARE_FUNC]="NODE_DECLARE_FUNC",    
+    // expressions
+    [NODE_COMMALIST] = "NODE_COMMALIST",
+    // operator
+    [NODE_ADD] = "NODE_ADD",
+    [NODE_SUB] = "NODE_SUB",
+    [NODE_MUL] = "NODE_MUL",
+    [NODE_DIV] = "NODE_DIV",
+    [NODE_MOD] = "NODE_MOD",
+    [NODE_BITAND] = "NODE_BITAND",
+    [NODE_BITOR] = "NODE_BITOR",
+    [NODE_XOR] = "NODE_XOR",
+    // comparator
+    [NODE_EQUAL] = "NODE_EQUAL",
+    [NODE_GREATER] = "NODE_GREATER",
+    [NODE_LESS] = "NODE_LESS",
+    [NODE_GREATER_EQUAL] = "NODE_GREATER_EQUAL",
+    [NODE_LESS_EQUAL] = "NODE_LESS_EQUAL",
+    [NODE_NOT_EQUAL] = "NODE_NOT_EQUAL",
+    // action
+    [NODE_ASSIGN] = "NODE_ASSIGN",
+    // logic
+    [NODE_AND] = "NODE_AND",
+    [NODE_OR] = "NODE_OR",
+    [NODE_NOT] = "NODE_NOT",
+    //
+    [NODE_FUNCCALL] = "NODE_FUNCCALL",
+    // others
+    [NODE_ARGLIST] = "NODE_ARGLIST",
+    [NODE_ARGPAIR] = "NODE_ARGPAIR",
+    [NODE_TYPEKW] = "NODE_TYPEKW",
+    
 };
 char *get_nodetype_str(astnode_type_t type) {
   if (type >= NODETYPE_MAP_MAX)
@@ -651,18 +658,95 @@ astnode_t* parse_singleexpr(list_t* tokens, size_t* iter){
   LOG(VERBOSE, "parsed singleexpr.\n");
   return singleexprnode;
 }
-static statment_parser recipe_stmts[]={
-  parse_definition,
-  parse_if,
-  parse_elseif,
-  parse_else,
-  parse_while,
-  parse_return,
-  parse_function,
-  parse_singleexpr,
-}; 
+astnode_t* parse_declaration(list_t* tokens, size_t* iter){
+  /* four patterns:
+     let id;
+     fn func;
+     extern let id;
+     extern fn func;
+  */
+  bool is_extern = false;
+  size_t backupiter=*iter;
+  if(peek_check_token(tokens, backupiter, EXTERN)){
+    is_extern = true;
+    backupiter++;
+  }
+  astnode_type_t nodetype = NODE_NONE;
+  astnode_t *declare_node = NULL; 
+  if(peek_check_token(tokens, backupiter, LET)){
+    nodetype = NODE_DECLARE_VAR;
+    backupiter++;
 
-astnode_t* parse_statement(list_t* tokens, size_t* iter){
+    tokentype_t recipe[] = {TOKEN_ID, SEMICOLON};
+    list_t *collected = parse_by_recipe(tokens, &backupiter, recipe, 2);
+    if(!collected){
+      LOG(VERBOSE, "parse_declaration failed bc no id or semicolon after id.\n");
+      return NULL;
+    }
+    astnode_t* idnode=list_get(collected, 0);
+    declare_node =
+        create_node(nodetype, idnode, NULL, idnode->value, idnode->position);
+    free(collected);
+  }else if(peek_check_token(tokens, backupiter, FN)){
+    nodetype = NODE_DECLARE_FUNC;
+    backupiter++;
+
+    tokentype_t recipe[] = {TOKEN_ID, OPENPAREN, TOKEN_ARGLIST, CLOSEPAREN, SEMICOLON};
+    list_t *collected = parse_by_recipe(tokens, &backupiter, recipe, 5);
+    if(!collected){
+      LOG(VERBOSE, "parse_declaration failed bc no id or semicolon after id.\n");
+      return NULL;
+    }
+    astnode_t* idnode=list_get(collected, 0);
+    astnode_t* arglistnode=list_get(collected, 2);
+    declare_node = create_node(nodetype, idnode, arglistnode, idnode->value,
+                               idnode->position);
+    free(collected);
+  } else {
+    LOG(VERBOSE, "parse_declaration failed bc not let/fn.\n");
+    return NULL;
+  }
+  astnode_t* toret=declare_node;
+  if(is_extern){
+    astnode_t *extnode =
+        create_node(NODE_EXTERN, declare_node, NULL, NULL, declare_node->position);
+    toret=extnode;
+  }
+  *iter = backupiter;
+  return toret;
+}
+
+astnode_t *parse_break(list_t *tokens, size_t *iter) {
+  tokentype_t rec[]={BREAK, SEMICOLON};
+  token_t *starttok=list_get(tokens, *iter);
+  list_t* collected=parse_by_recipe(tokens, iter, rec, 2);
+  if (!collected||!starttok) {
+    LOG(VERBOSE, "parse_singleexpr failed.\n");
+    return NULL;
+  }
+  astnode_t *breaknode =
+      create_node(NODE_BREAK, NULL, NULL, NULL, starttok->position);
+  free(collected);
+  LOG(VERBOSE, "parsed break.\n");
+  return breaknode;
+}  
+static statment_parser recipe_stmts[] = {
+    parse_function,
+    parse_singleexpr,    
+    parse_definition,
+    parse_declaration,
+    parse_if,
+    parse_elseif,
+    parse_else,
+    parse_while,
+    parse_return,    
+    parse_break,    
+    
+};
+
+astnode_t *parse_statement(list_t *tokens, size_t *iter) {
+  token_t* tok=list_get(tokens, *iter);
+  LOG(VERBOSE, "=====================\nnow parsing line %zu\n",tok->position.line);
   for (size_t i=0; i < sizeof(recipe_stmts)/sizeof(statment_parser); ++i) {
     size_t backup_iter=*iter;
     astnode_t* node=recipe_stmts[i](tokens,&backup_iter);

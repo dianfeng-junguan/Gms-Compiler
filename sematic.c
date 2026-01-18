@@ -26,10 +26,21 @@ symbol_t* create_symbol(char* name, symbol_type_t type, int layer){
   sym->name=name;
   sym->type=type;
   sym->layer=layer;
-  sym->value=0;
+  sym->value=0;  
+  sym->is_extern=false;
   return sym;
 }
-
+symbol_t* create_extern_symbol(char* name, symbol_type_t type, int layer){
+  symbol_t* sym=malloc(sizeof(symbol_t));
+  assert(sym);
+  sym->name=name;
+  sym->type=type;
+  sym->layer=layer;
+  sym->value=0;
+  sym->is_extern=true;
+  return sym;
+}
+size_t while_depth=0;
 bool check_statement(astnode_t* node, list_t* symbols, int layer){
   bool success=true;
   filepos_t pos=node->position;
@@ -56,6 +67,42 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       cry_errorf(SENDER_SEMATIC, pos, "undefined variable:%s\n", node->value);
       success=false;
     }
+    break;
+  }
+    
+  case NODE_DECLARE_VAR: 
+  case NODE_DECLARE_FUNC: {
+    // check redefinition
+    assert(node->left);    
+    if(node->left->node_type!=NODE_IDENTIFIER){
+      cry_error(SENDER_SEMATIC, "expected identifier at the left hand side of =", pos);
+      success=false;
+    }
+    if(is_symtab_dup(&node->syms, node->left->value)){
+      cry_error(SENDER_SEMATIC, "variable redefinition", pos);
+      success=false;
+    }
+    // ok. add it to the symtab.
+    list_append(symbols, create_symbol(node->left->value, SYMBOL_VARIABLE, layer));
+    break;
+  }
+  case NODE_EXTERN: {
+    // if it contains only declaration
+    assert(node->left);
+    if(node->left->node_type!=NODE_DECLARE_FUNC&&node->left->node_type!=NODE_DECLARE_VAR){
+      cry_error(SENDER_SEMATIC, "expected declaration after extern", pos);
+      success=false;      
+    }else{
+      // check redefinition
+      if(is_symtab_dup(&node->syms, node->left->value)){
+	cry_error(SENDER_SEMATIC, "variable redefinition", pos);
+	success=false;
+      }
+      // ok. add it to the symtab.
+      list_append(symbols, create_extern_symbol(node->left->value,
+						(node->left->node_type==NODE_DECLARE_VAR?
+						SYMBOL_VARIABLE:SYMBOL_FUNCTION), layer));
+    }    
     break;
   }
   case NODE_DEFINITION: {
@@ -165,8 +212,10 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     init_list(&node->syms, 10, sizeof(symbol_t));
     list_copy(&node->syms, symbols);
     // check body
+    while_depth++;
     if(node->right)
       check_statement(node->right, &node->syms,layer+1);
+    while_depth--;
     break;
   }
   case NODE_RETURN: {
@@ -195,6 +244,13 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       check_statement(node->right, symbols,layer);
     }else{
       cry_error(SENDER_SEMATIC, "no if body", pos);
+    }
+    break;
+  }
+  case NODE_BREAK: {
+    /* TODO: check if it is in while */
+    if(while_depth==0){
+      cry_error(SENDER_SEMATIC, "found break not in while", pos);
     }
     break;
   }
