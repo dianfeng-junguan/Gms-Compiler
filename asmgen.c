@@ -230,7 +230,8 @@ char* asm_gen(list_t* intercodes){
     intercode_t* code=list_get(intercodes, i);
     if(code->type==CODE_ALLOC_GLOBAL){
       asm_translate(&asm_codes, code, &stk, &reg_table);
-      list_remove(intercodes, i);
+      //free_intercode(code);
+      list_remove_shallow(intercodes, i);
     }
   }
   ASMU(&asm_codes, "[section .text]\n");
@@ -252,6 +253,10 @@ char* asm_gen(list_t* intercodes){
     //copy
     strcpy(result+nowsize, line);
     nowsize+=linel;
+    
   }
+  // free the previous line str
+  free_list(&asm_codes);
+  free_list(&reg_table);
   return result;
 }

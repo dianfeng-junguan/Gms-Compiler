@@ -19,30 +19,12 @@ void print_node(astnode_t* node, int indent){
   if(node->right)
     print_node(node->right, indent+2);
 }
-char* code="\
-extern fn print();     \n\
-fn main(){	       \n\
- let i=1;	       \n\
- i=i+1;		       \n\
- if i<1 {	       \n\
-  let a=2;	       \n\
- }else if i>=1{	       \n\
-  let a=3;	       \n\
- }else{		       \n\
-  let a=4;	       \n\
- }		       \n\
-while i<5 {	       \n\
-  i=i+1;	       \n\
-  break;	       \n\
-}		       \n\
- return 0;	       \n\
-}";
 int main(int argc, char** argv){
-#ifndef USE_TESTCODE
   if(argc<2){
     perror("error: need input file\n");
     return -1;
   }
+  init_my_allocator();
   char* input=argv[1];
   char* output=argc<3?"a.asm":argv[2];
   FILE* f=fopen(input, "r");
@@ -61,12 +43,9 @@ int main(int argc, char** argv){
     free(source);
     return -2;
   }
-#endif
-#ifdef USE_TESTCODE  
-  list_t tokens=do_lex(code);
-#else
   list_t tokens=do_lex(source);
-#endif
+  // free the source
+  free(source);
 #ifdef DEBUG
   for (size_t i=0; i < tokens.len; ++i) {
     token_t* tok=list_get(&tokens, i);
@@ -74,15 +53,16 @@ int main(int argc, char** argv){
 	   tok->position.line, tok->position.column);
   }
 #endif
-  astnode_t asttree=do_parse(&tokens);
-  if(!do_sematic(&asttree)){
+  astnode_t *asttree=do_parse(&tokens);
+  
+  if(!asttree||!do_sematic(asttree)){
     return -1;
   }
   
 #ifdef DEBUG
-  print_node(&asttree, 0);
+  print_node(asttree, 0);
 #endif
-  list_t intercodes=gen_intercode(&asttree);
+  list_t intercodes=gen_intercode(asttree);
 #ifdef DEBUG
   for (size_t i=0; i < intercodes.len; ++i) {
     intercode_t* code=list_get(&intercodes, i);
@@ -90,13 +70,13 @@ int main(int argc, char** argv){
   }
 #endif
   char* asmcode=asm_gen(&intercodes);
+  
+  
   if(!asmcode){
     return -1;
   }
-#ifdef DEBUG
-  printf("asm:\n%s",asmcode);
-#endif
-#ifndef USE_TESTCODE
+  LOG(VERBOSE, "asm:\n%s",asmcode);
+  
   FILE* fw=fopen(output, "w");
   if(!fw){
     perror("failed open output file");
@@ -104,6 +84,9 @@ int main(int argc, char** argv){
   }
   fwrite(asmcode, strlen(asmcode), 1, fw);
   fclose(fw);
-#endif
+  
+  //release the used mem
+  free(asmcode);
+  free_rest();
   return 0;
 }

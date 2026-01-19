@@ -30,16 +30,49 @@ void init_list(list_t* list, size_t capacity, size_t element_size);
 
 void list_append(list_t *list, void *element);
 void list_remove(list_t *list, size_t index);
+void list_remove_shallow(list_t *list, size_t index);
 void *list_get(list_t *list, size_t index);
 
+typedef void (*copy_callback)(void* old, void* newt);
 /**
    copy a list into another list.
-   this is a shallow copy. it copies the pointers but does not copy the data pointed to.
+   use the callback to do specific deep copying
    this will directly overwrite the dest list, so store the value before doing this.
  **/
-void list_copy(list_t* dest, list_t* src);
+void list_copy(list_t* dest, list_t* src, copy_callback callback);
 
 void free_list(list_t* list);
+void free_list_shallow(list_t *list);
+typedef void (*list_ele_dtor)(void *element);
+/**
+ * @brief      free the list and the elements with destructor
+ *
+ * @details    call dtor on every element
+ *
+ * @param      list the list
+ * @param      element_dtor the destructor
+ *
+ * @return     void
+ */
+void free_list_dtor(list_t *list, list_ele_dtor element_dtor);
+#define FREE_LIST_DTOR(list, dtor) free_list_dtor((list), (list_ele_dtor)(dtor))
+
+#define FREEIF(cont)                                                           \
+  if (cont) {                                                                  \
+    free(cont);                                                                \
+  }
+#define FREEIFD(cont, dtor)			\
+  if(cont)dtor((char*)cont);
+
+// ==================================
+// heap alloc funcs
+void init_my_allocator();
+char* clone_str(char* str);
+char *myalloc(size_t len);
+void myfree(char *str);
+void free_rest();
+// ==================================
+
 
 #define append(list, elementptr) (list_append(list, (void*)elementptr))
 
@@ -55,5 +88,9 @@ void free_list(list_t* list);
 #else
 #define LOG(level, fmt, ...)
 #define LOGERR(level, sender, pos, fmt, ...)
-#endif 
 #endif
+
+
+#endif
+
+

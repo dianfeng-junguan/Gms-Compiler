@@ -21,7 +21,7 @@ char* mklabel(){
     id /= 10;
     digits++;
   }
-  char *lbl = malloc(6 + digits + 1);
+  char *lbl = myalloc(6 + digits + 1);
   assert(lbl);
   memset(lbl, 0, 6 + digits + 1);
   memcpy(lbl, ".label", 6);
@@ -33,7 +33,7 @@ char* mklabel(){
   return lbl;
 }
 char* make_tmpvar(size_t tmpvarnum){
-  char *tmpv = malloc(50);
+  char *tmpv = myalloc(50);
   assert(tmpv);
   memcpy(tmpv, "tmp", 3);                                                  
   size_t tmptmp = tmpvarnum;                                                  
@@ -43,16 +43,23 @@ char* make_tmpvar(size_t tmpvarnum){
     tmptmp /= 10;                                                          
     ptr++;                                                                 
   }
-  *(tmpv + 3 + ptr) = '\0';
   return tmpv;
 }
 /// a tool func to create a code on the heap by a local intercode.
 intercode_t* create_code(intercode_type_t type, char* operand1, char* operand2, char* operand3)			       		
-{								
-  intercode_t* __heap_code__ = malloc(sizeof(intercode_t));
+{
+  intercode_t *__heap_code__ = (intercode_t*)myalloc(sizeof(intercode_t));
+  char *op1=operand1?clone_str(operand1):NULL;
+  char *op2=operand2?clone_str(operand2):NULL;
+  char *op3=operand3?clone_str(operand3):NULL;
   *__heap_code__ =
-      (intercode_t){.type = type, .label = operand1, .operand2 = (u64)operand2, .operand3=(u64)operand3};  
+      (intercode_t){.type = type, .label = op1, .operand2 = (u64)op2, .operand3=(u64)op3};  
   return __heap_code__;
+}
+void free_intercode(intercode_t* code){
+  FREEIFD(code->operand1str,myfree);
+  FREEIFD(code->operand2str,myfree);
+  FREEIFD(code->operand3str,myfree);
 }
 char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer);
 
@@ -338,27 +345,13 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   }
   return NULL;
 }
-void free_node(astnode_t *node) {
-  if(!node)return;  
-  if (node->left){
-    free_node(node->left);
-    node->left=NULL;
-  }  
-  if (node->right){
-    free_node(node->right);
-    node->right=NULL;
-  }
-  free(node);
-}
 void put_global_var_inits(list_t *code_list, astnode_t *ast) {
   int tmpnum = 0;
   if (ast->node_type == NODE_DEFINITION && ast->layer == 0) {    
     char* globtmpv=gen_node(ast->right, code_list, tmpnum, 0);
     CODE(code_list, CODE_MOV, ast->left->value, globtmpv, 0);
     // remove the node since we have generated it already
-    // we do this by setting the astnode type to NONE and free the subnodes
-    free_node(ast->left);
-    free_node(ast->right);
+    // we do this by setting the astnode type to NONE
     ast->left=NULL;
     ast->right=NULL;
     ast->node_type=NODE_NONE;

@@ -79,7 +79,7 @@ bool number_after(char* str, list_t* tokens, filepos_t pos){
   
   if(flag){   
     // create the token
-    printf("Creating number token:%s\n",str);
+    LOG(VERBOSE,"Creating number token:%s\n",str);
     token_t* tok=create_token(CONSTANT_NUMBER, str, pos);
     list_append(tokens, tok);
     return true;
@@ -283,31 +283,31 @@ list_t do_lex(char *str){
     bool token_flag=false;
     for (size_t i=0; i < sizeof(scan_recipe)/sizeof(lex_recipe_t); ++i) {
       if(scan_recipe[i].begin(str[ptr])){
-	printf("begin with recipe %zu, ptr=%zu\n",i,ptr);
+	LOG(VERBOSE,"begin with recipe %zu, ptr=%zu\n",i,ptr);
 	// beginning allowed
 	size_t pioneer=ptr+1;
 	// scan the whole thing
 	while (pioneer<len && scan_recipe[i].scan(str[pioneer], &str[ptr], pioneer-ptr)) {
 	  pioneer++;
 	}
-	printf("scanned, pioneer=%zu\n",pioneer);
+	LOG(VERBOSE,"scanned, pioneer=%zu\n",pioneer);
 	if(pioneer==ptr){
 	  //empty str?
-	  printf("scanned an empty str at line %zu, column %zu. this is not right.\n",line, col);
+	  LOG(VERBOSE, "scanned an empty str at line %zu, column %zu. this is not right.\n",line, col);
 	  break;
 	}
 	// take out the substr
-	char* subbed=malloc(pioneer-ptr+1);
+	char* subbed=myalloc(pioneer-ptr+1);
 	assert(subbed);
 	memcpy(subbed, &str[ptr], pioneer-ptr);
 	subbed[pioneer-ptr]='\0';
 	// final check and add it to the tokens
 	if(!scan_recipe[i].after(subbed,&tokens,(filepos_t){line,col})){
 	  // failed final check, freeing the str.
-	  printf("failed final check\n");
-	  free(subbed);
+	  LOG(VERBOSE, "failed final check\n");
+	  myfree(subbed);
 	}else{
-	  printf("taken token %s\n",subbed);
+	  LOG(VERBOSE,"taken token %s\n",subbed);
 	  // succeeded.
 	  token_flag=true;
 	  forward(str, &ptr, pioneer-ptr, &line, &col);
@@ -325,10 +325,65 @@ list_t do_lex(char *str){
 
 
 token_t *create_token(tokentype_t token_type, char *value, filepos_t pos){
-  token_t* tok=malloc(sizeof(token_t));
+  token_t* tok=(token_t*)myalloc(sizeof(token_t));
   assert(tok!=0);
   tok->token_type=token_type;
   tok->value=value;
   tok->position=pos;
   return tok;
+}
+static char* mappings[]={
+  [LET]="LET",
+  [FN]="FN",
+  [IF]="IF",
+  [ELSE]="ELSE",
+  [WHILE]="WHILE",
+  [RETURN]="RETURN",
+  [EXTERN]="EXTERN",
+  [BREAK]="BREAK",
+  [INT]="INT",
+  [STRING]="STRING",
+  [WHITESPACE]="WHITESPACE",
+  [COMMA]="COMMA",
+  [SEMICOLON]="SEMICOLON",
+  [COLON]="COLON",
+  [QUOTE]="QUOTE",
+  [DOUBLE_QUOTE]="DOUBLE_QUOTE",
+  [OPENPAREN]="OPENPAREN",
+  [CLOSEPAREN]="CLOSEPAREN",
+  [OPENBRACE]="OPENBRACE",
+  [CLOSEBRACE]="CLOSEBRACE",
+  [ADD]="ADD",
+  [SUB]="SUB",
+  [MUL]="MUL",
+  [DIV]="DIV",
+  [MOD]="MOD",
+  [BITAND]="BITAND",
+  [BITOR]="BITOR",
+  [XOR]="XOR",
+  [EQUAL]="EQUAL",
+  [GREATER]="GREATER",
+  [LESS]="LESS",
+  [GREATER_EQUAL]="GREATER_EQUAL",
+  [LESS_EQUAL]="LESS_EQUAL",
+  [NOT_EQUAL]="NOT_EQUAL",
+  [ASSIGN]="ASSIGN",
+  [AND]="AND",
+  [OR]="OR",
+  [NOT]="NOT",
+  [IDENTIFIER]="IDENTIFIER",
+  [CONSTANT_NUMBER]="CONSTANT_NUMBER",
+  [CONSTANT_STRING]="CONSTANT_STRING",
+  [TOKEN_VALUE]="TOKEN_VALUE",
+  [TOKEN_ID]="TOKEN_ID",
+  [TOKEN_TYPEKW]="TOKEN_TYPEKW",
+  [TOKEN_EXPR]="TOKEN_EXPR",
+  [TOKEN_STATEMENTS]="TOKEN_STATEMENTS",
+  [TOKEN_ARGLIST]="TOKEN_ARGLIST",
+};
+char* tokentype_tostr(tokentype_t tt){
+  return mappings[tt];
+}
+void free_token(token_t* tok){
+  FREEIFD(tok->value, myfree);
 }

@@ -61,5 +61,6 @@ typedef struct {
 }intercode_t;
 
 typedef struct _astnode_t astnode_t;
-list_t gen_intercode(astnode_t* ast);
+list_t gen_intercode(astnode_t *ast);
+void free_intercode(intercode_t* code);
 char *codetype_tostr(intercode_type_t type);

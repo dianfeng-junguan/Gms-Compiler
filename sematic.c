@@ -8,7 +8,9 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-
+void copy_symbol(symbol_t* old, symbol_t* newt){
+  newt->name=clone_str(old->name);
+}
 bool is_symtab_dup(list_t* syms, char* name){
   for (size_t i=0; i < syms->len; ++i) {
     symbol_t* sym=list_get(syms, i);
@@ -22,9 +24,10 @@ bool is_symtab_dup(list_t* syms, char* name){
    reminder: name must lives longer than the symbol!!!
  **/
 symbol_t* create_symbol(char* name, symbol_kind_t type, symbol_type_t value_type, int layer){
-  symbol_t* sym=malloc(sizeof(symbol_t));
+  symbol_t* sym=(symbol_t*)myalloc(sizeof(symbol_t));
   assert(sym);
-  sym->name=name;
+  
+  sym->name=clone_str(name);
   sym->type=type;
   sym->sym_type=value_type;
   sym->layer=layer;
@@ -52,7 +55,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       assert(node->value);
       if(strcmp(node->value, sym->name)==0){
 	// found
-	LOG(REGULAR, "identifier found defined symbol %s, type %d\n", node->value, sym->sym_type);
+	LOG(VERBOSE, "identifier found defined symbol %s, type %d\n", node->value, sym->sym_type);
 	node->value_type=sym->sym_type;
 	f=true;
       }
@@ -70,39 +73,19 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     // check redefinition
     assert(node->left);    
     if(node->left->node_type!=NODE_IDENTIFIER){
-      cry_error(SENDER_SEMATIC, "expected identifier at the left hand side of =", pos);
+      cry_error(SENDER_SEMATIC, "expected identifier", pos);
       success=false;
+      break;
     }
     if(is_symtab_dup(&node->syms, node->left->value)){
-      cry_error(SENDER_SEMATIC, "variable redefinition", pos);
+      cry_error(SENDER_SEMATIC, "variable redeclaration", pos);
       success=false;
+      break;
     }
     // ok. add it to the symtab.
-    /* TODO: add type commenting of declaration (let a:int;) */
-    list_append(symbols, create_symbol(node->left->value, SYMBOL_VARIABLE, TYPE_INT, layer));
-    break;
-  }
-  case NODE_EXTERN: {
-    // if it contains only declaration
-    assert(node->left);
-    if(node->left->node_type!=NODE_DECLARE_FUNC&&node->left->node_type!=NODE_DECLARE_VAR){
-      cry_error(SENDER_SEMATIC, "expected declaration after extern", pos);
-      success=false;      
-    }else{
-      // check redefinition
-      if(is_symtab_dup(&node->syms, node->left->value)){
-	cry_error(SENDER_SEMATIC, "variable redeclaration", pos);
-	success=false;
-      }
-      // ok. add it to the symtab.
-      /* TODO: add type commenting of declaration (let a:int;) */
-      symbol_t* extsym= create_symbol(node->left->value,
-						(node->left->node_type==NODE_DECLARE_VAR?
-						 SYMBOL_VARIABLE:SYMBOL_FUNCTION),
-				     TYPE_INT,layer);
-      extsym->is_extern=true;
-      list_append(symbols,extsym);
-    }    
+    symbol_t* extsym=create_symbol(node->left->value, SYMBOL_VARIABLE, TYPE_INT, layer);
+    extsym->is_extern=true;
+    list_append(symbols, extsym);
     break;
   }
   case NODE_DEFINITION: {
@@ -127,7 +110,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     // ok. add it to the symtab.
     /* TODO: add type commenting */
     // if there is no type explicitly written, we infer the type
-    LOG(REGULAR, "defining %s of type %d\n",node->left->value, node->right->value_type);
+    LOG(VERBOSE, "defining %s of type %d\n",node->left->value, node->right->value_type);
     list_append(symbols, create_symbol(node->left->value, SYMBOL_VARIABLE, node->right->value_type, layer));
     break;
   }
@@ -147,7 +130,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     // check the inside
     // init the function scope symtab first: inherit the parent symtab.
     init_list(&node->syms, symbols->capacity, symbols->element_size);
-    list_copy(&node->syms, symbols);
+    list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
     in_function=true;
     function_rettype=node->value_type;
     if(node->right){
@@ -198,7 +181,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     }
     // the body of the if is a scope
     init_list(&node->syms, 10, sizeof(symbol_t));
-    list_copy(&node->syms, symbols);
+    list_copy(&node->syms, symbols,(copy_callback)copy_symbol);
     // check body
     if(node->right)
       check_statement(node->right, &node->syms,layer+1);
@@ -209,7 +192,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
   case NODE_ELSE: {
     // the body of the if is a scope
     init_list(&node->syms, 10, sizeof(symbol_t));
-    list_copy(&node->syms, symbols);
+    list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
     // check body
     if(node->left)
       check_statement(node->left, &node->syms,layer+1);
@@ -229,7 +212,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     }
     // the body of the if is a scope
     init_list(&node->syms, 10, sizeof(symbol_t));
-    list_copy(&node->syms, symbols);
+    list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
     // check body
     while_depth++;
     if(node->right)
@@ -295,7 +278,6 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     break;
   }
   case NODE_BREAK: {
-    /* TODO: check if it is in while */
     if(while_depth==0){
       cry_error(SENDER_SEMATIC, "found break not in while", pos);
     }
@@ -307,7 +289,11 @@ default:
   }
   return success;
 }
-
+void free_symbol(symbol_t* sym){
+  FREEIFD(sym->name, myfree);
+  sym->name=NULL;
+  FREEIFD(sym, myfree);
+}
 bool do_sematic(astnode_t* ast){
   // init the symbol table
   init_list(&ast->syms, 10, sizeof(symbol_t));
@@ -315,6 +301,7 @@ bool do_sematic(astnode_t* ast){
   bool success=true;
   if(ast->left)
     success=check_statement(ast->left, &ast->syms, 0);
+  if(!success)return false;
   if(ast->right)
     success=check_statement(ast->right, &ast->syms, 0);
   return success;

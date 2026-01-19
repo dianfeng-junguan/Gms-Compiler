@@ -89,7 +89,10 @@ typedef struct{
   unsigned long long value;
   int is_extern;
 }symbol_t;
-astnode_t do_parse(list_t *tokens);
+astnode_t *do_parse(list_t *tokens);
 
 char* get_nodetype_str(astnode_type_t type);
 
+void free_node(astnode_t *node);
+void free_symbol(symbol_t *sym);
+void free_all_nodes();
