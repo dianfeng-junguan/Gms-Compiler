@@ -88,6 +88,8 @@ typedef struct{
   int layer;
   unsigned long long value;
   int is_extern;
+  // function args. the elements are of type symbol_type_t
+  list_t args;
 }symbol_t;
 astnode_t *do_parse(list_t *tokens);
 

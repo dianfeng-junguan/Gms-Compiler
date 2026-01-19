@@ -367,7 +367,8 @@ astnode_t *parse_identifier(list_t *tokens, size_t *iter) {
   // the char* of the token points to a str that lives longer than the nodes
   // so it's ok to directly copy the pointer.
   astnode_t* id=create_node(NODE_IDENTIFIER, NULL, NULL, tok->value, tok->position);
-  assert(id); 
+  assert(id);
+  (*iter)++;
   return id;
 }
 
@@ -378,10 +379,23 @@ astnode_t *parse_identifier(list_t *tokens, size_t *iter) {
  */
 astnode_t *parse_typekw(list_t *tokens, size_t *iter) {
   token_t* tok=list_get(tokens, *iter);
-  if(!tok/* todo: check the type  */){
-    return NULL;
+  symbol_type_t kwtype=TYPE_VOID;
+  switch (tok->token_type) {
+  case STRING:
+    kwtype = TYPE_STRING;
+    break;    
+  case INT: {
+    kwtype=TYPE_INT;
+    break;
   }
-  astnode_t* id=create_node(NODE_TYPEKW, NULL, NULL, tok->value, tok->position);
+  default:
+    return NULL;
+    break;
+  }
+  astnode_t *id =
+      create_node(NODE_TYPEKW, NULL, NULL, tok->value, tok->position);
+  id->value_type = kwtype;
+  (*iter)++;
   return id;
 }
 astnode_t* recipe_expr(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
@@ -489,8 +503,8 @@ astnode_t* recipe_arglist(list_t* tokens, size_t* iter, tokentype_t recipe[], si
     token_t *tok=list_get(tokens, *iter);
     astnode_t *id = parse_identifier(tokens, iter);
     astnode_t *argtype = parse_typekw(tokens, iter);
-    astnode_t *pair=create_node(NODE_ARGPAIR, id, argtype, NULL, tok->position);
     if(id&&argtype){ 
+      astnode_t *pair=create_node(NODE_ARGPAIR, id, argtype, NULL, tok->position);
       if(holder->left!=NULL){
 	// needs to create a leafholder
 	filepos_t emptypos={0,0};            

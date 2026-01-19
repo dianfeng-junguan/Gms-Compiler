@@ -226,15 +226,11 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     return tmpv;
     break;
   }
-  case NODE_EXTERN: {
-    assert(node->left);
-    assert(node->left->left);
-    CODE(code_list, CODE_EXTERN_DECLARE, node->left->left->value, 0, 0);
-    break;
-  }
+    
   case NODE_DECLARE_VAR: {
   case NODE_DECLARE_FUNC: {
-    CODE(code_list, CODE_DECLARE, node->left->value, 0, 0);
+    assert(node->left);
+    CODE(code_list, CODE_EXTERN_DECLARE, node->left->value, 0, 0);
     break;
   }
   }
@@ -369,7 +365,7 @@ list_t gen_intercode(astnode_t* ast){
   // generate global symbols
   for (size_t i = 0; i < ast->syms.len; ++i) {
     symbol_t *sym = list_get(&ast->syms, i);
-    if(sym->type==SYMBOL_VARIABLE){
+    if(sym->type==SYMBOL_VARIABLE&&!sym->is_extern){
       CODE(&codes, CODE_ALLOC_GLOBAL, sym->name, 0 ,0);
     }
   }

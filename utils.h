@@ -81,7 +81,7 @@ void free_rest();
 
 #define NEED_LOG
 
-#define LOG_LEVEL REGULAR
+#define LOG_LEVEL VERBOSE
 #ifdef NEED_LOG
 #define LOG(level, fmt, ...) if(level>=LOG_LEVEL)printf(fmt,##__VA_ARGS__);
 #define LOGERR(level, sender, pos, fmt, ...) if(level>=LOG_LEVEL)cry_errorf(sender, pos, fmt,##__VA_ARGS__);
