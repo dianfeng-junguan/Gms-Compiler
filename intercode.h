@@ -36,7 +36,20 @@ typedef enum {
   CODE_PUSHARG,
   CODE_FUNCCALL,
   CODE_STORE_RETV,
-  //
+  
+  // second-time processing intercodes 
+  // indicate asmgen to put constant at data section
+  // CODE_DATA name data
+  CODE_DATA,
+  // used to alloc a mem for global vars
+  // this is differente from CODE_DATA. when following codes used CODE_DATA alloced name,
+  // the asmgen will replace it with the address(or label representing the address) of the data;
+  // as for CODE_GLOBAL_VAR_DATA, the asmgen will operate with the value rather than the address.
+  // it is a difference like var and [var] in nasm.
+  // CODE_GLOBAL_VAR_DATA name data
+  CODE_GLOBAL_VAR_DATA,
+  CODE_DATA_SECTION,
+  CODE_TEXT_SECTION,
 } intercode_type_t;
 typedef unsigned long long u64;
 typedef struct {
@@ -64,3 +77,11 @@ typedef struct _astnode_t astnode_t;
 list_t gen_intercode(astnode_t *ast);
 void free_intercode(intercode_t* code);
 char *codetype_tostr(intercode_type_t type);
+
+intercode_t create_code(intercode_type_t type, char* operand1, char* operand2, char* operand3);
+#define CODE(code_list, type, op1, op2, op3)                                   \
+  do {                                                                         \
+    intercode_t __code = create_code(type, op1, op2, op3);                     \
+    append(code_list, &__code);                                            \
+  } while (0);
+

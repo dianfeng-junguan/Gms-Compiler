@@ -46,15 +46,14 @@ char* make_tmpvar(size_t tmpvarnum){
   return tmpv;
 }
 /// a tool func to create a code on the heap by a local intercode.
-intercode_t* create_code(intercode_type_t type, char* operand1, char* operand2, char* operand3)			       		
+intercode_t create_code(intercode_type_t type, char* operand1, char* operand2, char* operand3)			       		
 {
-  intercode_t *__heap_code__ = (intercode_t*)myalloc(sizeof(intercode_t));
-  char *op1=operand1?clone_str(operand1):NULL;
-  char *op2=operand2?clone_str(operand2):NULL;
-  char *op3=operand3?clone_str(operand3):NULL;
-  *__heap_code__ =
-      (intercode_t){.type = type, .label = op1, .operand2 = (u64)op2, .operand3=(u64)op3};  
-  return __heap_code__;
+  return (intercode_t){
+    .type=type,
+    .operand1str=operand1?clone_str(operand1):NULL,
+    .operand2str=operand2?clone_str(operand2):NULL,
+    .operand3str=operand3?clone_str(operand3):NULL,
+  };
 }
 void free_intercode(intercode_t* code){
   FREEIFD(code->operand1str,myfree);
@@ -62,9 +61,6 @@ void free_intercode(intercode_t* code){
   FREEIFD(code->operand3str,myfree);
 }
 char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer);
-
-#define CODE(code_list, type, op1, op2, op3)                                   \
-  list_append(code_list, create_code(type, op1, op2, op3))
 size_t gen_arglist_node(astnode_t *node, list_t *code_list, int tmpnum,
                         int layer) {
   size_t num_args=0;
@@ -116,16 +112,13 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   case NODE_FUNCTION: {
     assert(node->left&&(node->left->node_type==NODE_IDENTIFIER)&&node->left->value);
     char* funcname=node->left->value;
-    intercode_t *code =
-        create_code(CODE_DEF_FUNC,funcname,0,0);
     // first declare the func
-    list_append(code_list, code);
+    CODE(code_list, CODE_DEF_FUNC,funcname,0,0);
     // then assign the symbols
     for (size_t i=0; i < node->syms.len; ++i) {
       symbol_t *sym = list_get(&node->syms, i);
       if(sym->layer==layer+1){
-	intercode_t *alloc_local = create_code(CODE_ALLOC_LOCAL, sym->name, "8" ,0);
-        list_append(code_list, alloc_local);
+	CODE(code_list, CODE_ALLOC_LOCAL, sym->name, "8" ,0);
       }
     }
     // then gen the body
@@ -139,16 +132,14 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
       // gen the return value first
      tmpv = gen_node(node->left, code_list, tmpnum,layer+1);      
     }
-    intercode_t *ret = create_code(CODE_RETURN, tmpv, 0, 0);    
-    list_append(code_list, ret);
+    CODE(code_list, CODE_RETURN, tmpv, 0, 0);
     break;
   }
   case NODE_ASSIGN: {
     assert(node->left&&node->left->value&&node->right);
     char *assigned = node->left->value;
     char* rhs = gen_node(node->right, code_list, tmpnum,layer+1);
-    intercode_t *code = create_code(CODE_MOV,assigned,rhs,0);
-    list_append(code_list, code);
+    CODE(code_list, CODE_MOV,assigned,rhs,0);
     break;
   }
   case NODE_DEFINITION: {
@@ -163,8 +154,7 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     char *rhs = gen_node(node->right, code_list, tmpnum + 1, layer + 2);       \
     char *res = make_tmpvar(tmpnum + 3);                                       \
     CODE(code_list, CODE_ALLOC_TMP, res, "8", 0);                              \
-    intercode_t *code = create_code(CODE_##type_noprefix, lhs, rhs, res);      \
-    list_append(code_list, code);                                              \
+    CODE(code_list, CODE_##type_noprefix, lhs, rhs, res);		       \
     return res;                                                                \
     break;                                                                     \
   }
@@ -379,17 +369,17 @@ list_t gen_intercode(astnode_t* ast){
   return codes;
 }
 static char *codetype_strs[] = {
-    [CODE_DEF_FUNC] = "CODE_DEF_FUNC",
-    [CODE_DEF_FUNC_END] = "CODE_DEF_FUNC_END",
-    [CODE_ALLOC_GLOBAL] = "CODE_ALLOC_GLOBAL",
-    [CODE_ALLOC_LOCAL] = "CODE_ALLOC_LOCAL",
-    [CODE_ALLOC_TMP] = "CODE_ALLOC_TMP",
-    [CODE_FREE] = "CODE_FREE",
-    [CODE_RETURN] = "CODE_RETURN",
-    [CODE_MOV] = "CODE_MOV",
+  [CODE_DEF_FUNC] = "CODE_DEF_FUNC",
+  [CODE_DEF_FUNC_END] = "CODE_DEF_FUNC_END",
+  [CODE_ALLOC_GLOBAL] = "CODE_ALLOC_GLOBAL",
+  [CODE_ALLOC_LOCAL] = "CODE_ALLOC_LOCAL",
+  [CODE_ALLOC_TMP] = "CODE_ALLOC_TMP",
+  [CODE_FREE] = "CODE_FREE",
+  [CODE_RETURN] = "CODE_RETURN",
+  [CODE_MOV] = "CODE_MOV",
 
-    [CODE_DECLARE]="CODE_DECLARE",
-    [CODE_EXTERN_DECLARE]="CODE_EXTERN_DECLARE",    
+  [CODE_DECLARE]="CODE_DECLARE",
+  [CODE_EXTERN_DECLARE]="CODE_EXTERN_DECLARE",    
 
   // operators
   [CODE_ADD]="CODE_ADD",
@@ -415,6 +405,11 @@ static char *codetype_strs[] = {
   [CODE_PUSHARG]="CODE_PUSHARG",
   [CODE_FUNCCALL]="CODE_FUNCCALL",
   [CODE_STORE_RETV]="CODE_STORE_RETV",
+
+  
+  [CODE_DATA]="CODE_DATA",
+  [CODE_DATA_SECTION]="CODE_DATA_SECTION",
+  [CODE_TEXT_SECTION]="CODE_TEXT_SECTION",
 };
 char *codetype_tostr(intercode_type_t type) {
   return codetype_strs[type];

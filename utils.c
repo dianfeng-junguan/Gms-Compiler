@@ -11,7 +11,7 @@ list_t create_list(size_t capacity, size_t element_size){
     .element_size=element_size,
     .capacity=capacity,
     .len=0,
-    .array=(void*)malloc(capacity*sizeof(void*))
+    .array=(void*)malloc(capacity*element_size)
   };
   assert(list.array!=0);
   return list;
@@ -21,76 +21,36 @@ void list_append(list_t *list, void *element){
   // first check if it's full
   if(list->len==list->capacity){
     //realloc
-    list->array=realloc(list->array, list->capacity*sizeof(void*)*2);
+    list->array=realloc(list->array, list->capacity*list->element_size*2);
     list->capacity*=2;
   }
-  list->array[list->len++]=element;
-}
-
-void list_remove_shallow(list_t *list, size_t index){
-  // check if the index overbounds
-  assert(index<list->len);
-  if(list->array[index]){
-    list->array[index]=0;  
-  }
-  // and we compact the elements
-  for (size_t i=index; i<list->len-1; i++) {
-    list->array[i]=list->array[i+1];
-  }
-  if(list->len>0){
-    list->len--;
-  }
-  if(list->len<list->capacity/2){
-    list->array=realloc(list->array, list->capacity*sizeof(void*)/2);
-    list->capacity/=2;
-  }
+  memcpy(list->array+list->len*list->element_size, element, list->element_size);
+  list->len++;
 }
 void list_remove(list_t *list, size_t index){
   // check if the index overbounds
   assert(index<list->len);
-  if(list->array[index]){
-    free(list->array[index]);
-    list->array[index]=0;  
-  }
-  // and we compact the elements
-  for (size_t i=index; i<list->len-1; i++) {
-    list->array[i]=list->array[i+1];
-  }
-  if(list->len>0){
-    list->len--;
-  }
+  // compact the elements
+  memmove(list->array + list->element_size * index,
+         list->array + list->element_size * (index + 1),
+         (list->len-index-1)*list->element_size);
   if(list->len<list->capacity/2){
-    list->array=realloc(list->array, list->capacity*sizeof(void*)/2);
+    list->array=realloc(list->array, list->capacity*list->element_size/2);
     list->capacity/=2;
   }
 }
 void* list_get(list_t* list, size_t index){
-  assert(index<list->len);
-  assert(list->array[index]!=0);
-  return list->array[index];
+  assert(index < list->len);
+  return list->array+list->element_size*index;
 } 
-void free_list_shallow(list_t* list){  
-  
-  free(list->array);
-  list->array=0;
-  list->len=list->capacity=0;
-}
 void free_list(list_t* list){
-  for (size_t i=0; i < list->len; ++i) {
-    if (list->array[i]!=0) { 
-      free(list->array[i]);
-    }
-  }
   free(list->array);
   list->array=0;
   list->len=list->capacity=0;
 }
 void free_list_dtor(list_t* list, void (*element_dtor)(void *element)){
   for (size_t i=0; i < list->len; ++i) {
-    if (list->array[i]!=0) {
-      element_dtor(list->array[i]);
-      free(list->array[i]);
-    }
+    element_dtor(list->array+i*list->element_size);
   }
   free(list->array);
   list->array=0;
@@ -98,15 +58,14 @@ void free_list_dtor(list_t* list, void (*element_dtor)(void *element)){
 }
 
 void list_copy(list_t* dest, list_t* src, copy_callback callback){
-  dest->array=realloc(dest->array, src->capacity*sizeof(void*));
   dest->capacity=src->capacity;
   dest->len=src->len;
   dest->element_size=src->element_size;
-  memset(dest->array,0 ,dest->capacity*sizeof(void*));
-  for (size_t i=0; i < src->len; ++i) {
-    dest->array[i]=malloc(dest->element_size);
-    memcpy(dest->array[i],src->array[i],dest->element_size);
-    callback(src->array[i],dest->array[i]);
+  dest->array=realloc(dest->array, src->capacity*dest->element_size);
+  memcpy(dest->array, src->array, src->capacity*src->element_size);
+  for (size_t i = 0; i < src->len; ++i) {
+    size_t offset=i*src->element_size;
+    callback(src->array+offset,dest->array+offset);
   }
 }
 void init_list(list_t* list, size_t capacity, size_t element_size){
@@ -120,7 +79,7 @@ char* myalloc(size_t len){
   char* cloned=malloc(len+1);
   assert(cloned);
   memset(cloned,0,len+1);
-  append(&alloced_mems, cloned);
+  append(&alloced_mems, &cloned);
   return cloned;
 }
 

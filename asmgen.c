@@ -12,7 +12,7 @@
     char *line = malloc(64);                                                   \
     assert(line);                                                              \
     snprintf(line, 64, fmt, ##__VA_ARGS__);				\
-    list_append(list_asm, line);                                               \
+    list_append(list_asm, &line);                                               \
   } while (0);
 char *alloc_reg(list_t* regs, char* varname) {
   for (size_t i=0; i < regs->len; ++i) {
@@ -37,6 +37,27 @@ void free_reg(list_t* regs, char* varname){
 static size_t stk_argsz=0;
 void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table){
   switch (intercode->type) {
+  case CODE_DATA_SECTION:
+    ASM("section .data\n");
+    break;
+  case CODE_TEXT_SECTION:
+    ASM("section .text\n");
+    break;
+  case CODE_GLOBAL_VAR_DATA:
+    ASM("%s: dq %s\n%%define %s qword [%s]\n",intercode->operand1str, intercode->operand2str,
+	intercode->operand1str, intercode->operand1str);
+    break;
+  case CODE_DATA:{
+    char* data=intercode->operand2str;
+    char* width="dq";
+    char* ending="";
+    if(data[0]=='\"'){
+      width="db";
+      ending=",0";
+    }
+    ASM("%s: %s %s%s\n",intercode->operand1str, width, intercode->operand2str, ending);
+    break;
+  }
   case CODE_DEF_FUNC: {
     ASM("global %s\n",intercode->label);
     ASM("%s:\n",intercode->label);
@@ -204,12 +225,15 @@ reg_tmpvar_pair_t* create_regvar(char* reg){
   stru->var=NULL;
   return stru;
 }
+void free_reg_str_pair(reg_tmpvar_pair_t* p){
+  
+}
 #define ASMU(codes,fmt, ...)			\
   do {						\
     char *line = malloc(64);			\
     assert(line);				\
     snprintf(line, 64, fmt, ##__VA_ARGS__);	\
-    list_append(codes, line);			\
+    list_append(codes, &line);			\
   } while (0);
 char* asm_gen(list_t* intercodes){
   list_t asm_codes=create_list(20, sizeof(char*));
@@ -223,18 +247,8 @@ char* asm_gen(list_t* intercodes){
   list_append(&reg_table, create_regvar("rsi"));
   // something
   ASMU(&asm_codes, "bits 64\n");
-  ASMU(&asm_codes, "default rel\n");  
-  // first move the global variables to the data section
-  ASMU(&asm_codes,"[section .data]\n");
-  for (size_t i=0; i < intercodes->len; ++i) {
-    intercode_t* code=list_get(intercodes, i);
-    if(code->type==CODE_ALLOC_GLOBAL){
-      asm_translate(&asm_codes, code, &stk, &reg_table);
-      //free_intercode(code);
-      list_remove_shallow(intercodes, i);
-    }
-  }
-  ASMU(&asm_codes, "[section .text]\n");
+  ASMU(&asm_codes, "default rel\n");
+  
   for (size_t i=0; i < intercodes->len; ++i) {
     asm_translate(&asm_codes, list_get(intercodes, i),&stk,&reg_table);    
   }
@@ -243,7 +257,7 @@ char* asm_gen(list_t* intercodes){
   size_t nowsize=0;
   char* result=malloc(nowcapa);
   for (size_t i=0; i < asm_codes.len; ++i) {
-    char* line=list_get(&asm_codes, i);
+    char* line=*(char**)list_get(&asm_codes, i);
     size_t linel=strlen(line);
     // extend
     while(nowsize+linel>=nowcapa){
@@ -256,7 +270,11 @@ char* asm_gen(list_t* intercodes){
     
   }
   // free the previous line str
+  for (size_t i=0; i < asm_codes.len; ++i) {
+    char* line=*(char**)list_get(&asm_codes, i);
+    free(line);
+  }
   free_list(&asm_codes);
-  free_list(&reg_table);
+  FREE_LIST_DTOR(&reg_table, free_reg_str_pair);
   return result;
 }

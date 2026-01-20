@@ -4,6 +4,7 @@
 #include "parser.h"
 #include "sematic.h"
 #include "intercode.h"
+#include "intercode2.h"
 #include "asmgen.h"
 #include "utils.h"
 #include <stddef.h>
@@ -62,7 +63,8 @@ int main(int argc, char** argv){
 #ifdef DEBUG
   print_node(asttree, 0);
 #endif
-  list_t intercodes=gen_intercode(asttree);
+  list_t ic1=gen_intercode(asttree);
+  list_t intercodes=process_intercode(&ic1);
 #ifdef DEBUG
   for (size_t i=0; i < intercodes.len; ++i) {
     intercode_t* code=list_get(&intercodes, i);

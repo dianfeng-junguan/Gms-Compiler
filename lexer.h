@@ -101,6 +101,6 @@ list_t do_lex(char *str);
 /// create a token on the heap.
 /// 
 /// reminder: the value str needs to be on the heap.
-token_t *create_token(tokentype_t token_type, char *value, filepos_t pos);
+token_t create_token(tokentype_t token_type, char *value, filepos_t pos);
 char* tokentype_tostr(tokentype_t tt);
 void free_token(token_t* tok);

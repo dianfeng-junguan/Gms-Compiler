@@ -72,6 +72,7 @@ char *get_nodetype_str(astnode_type_t type) {
 static size_t node_create_counter=0;
 static size_t node_free_counter=0;
 void free_node(astnode_t *node) {
+  //printf("freed %s=%s@%d type %d\n",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer, node->value_type);
   FREEIFD(node->value,myfree);
   if(node->syms.array){
     FREE_LIST_DTOR(&node->syms, free_symbol);
@@ -547,7 +548,7 @@ static recipe_t recipes[] = {
 // collect the tokens by the recipe. and if ordered expr, value or stmt, it
 // packs up tokens in the range into a node. 
 list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
-  list_t collected=create_list(5, sizeof(token_t));
+  list_t collected=create_list(5, sizeof(astnode_t*));
   size_t backupiter=*iter;
   for (size_t i=0; i<recipe_len; ++i) {
     astnode_t *got = NULL;
@@ -557,7 +558,7 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
         processed = true;
         got = recipes[j].chef(tokens, &backupiter, recipe, recipe_len);
 	if(got){
-          list_append(&collected, got);
+          list_append(&collected, &got);
 	  break;
         } else {
 	  // invalid token array
@@ -589,8 +590,8 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
 }
 
 astnode_t *parse_definition(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos) {
-  astnode_t* id=list_get(collected, 0);  
-  astnode_t* rexpr=list_get(collected, 1);
+  astnode_t* id=*(astnode_t**)list_get(collected, 0);  
+  astnode_t* rexpr=*(astnode_t**)list_get(collected, 1);
   astnode_t *defnode =
       create_node(NODE_DEFINITION, id, rexpr, NULL, pos);
   return defnode;
@@ -599,15 +600,15 @@ astnode_t *parse_definition(list_t *collected, list_t *tokens, size_t *iter, fil
 static tokentype_t elseif_recipe[]={ELSE, IF, TOKEN_EXPR, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
 static tokentype_t else_recipe[]={ELSE, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
 astnode_t* parse_else(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
-  astnode_t* stmts=list_get(collected, 0);
+  astnode_t* stmts=*(astnode_t**)list_get(collected, 0);
   astnode_t *elsenode =
       create_node(NODE_ELSE, stmts, NULL, NULL, pos);
   return elsenode;
 }
 
 astnode_t* parse_elseif(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
-  astnode_t* condition=list_get(collected, 0);
-  astnode_t *statements = list_get(collected, 1);
+  astnode_t* condition=*(astnode_t**)list_get(collected, 0);
+  astnode_t *statements = *(astnode_t**)list_get(collected, 1);
 
   astnode_t *nextelseifnode=NULL,*elsenode=NULL;
   list_t *elseif_collected = parse_by_recipe(tokens, iter, elseif_recipe, 6);
@@ -628,18 +629,18 @@ astnode_t* parse_elseif(list_t *collected, list_t *tokens, size_t *iter, filepos
   astnode_t *elseifnode =
       create_node(NODE_ELSEIF, condition, holder, NULL, pos);
   if(elseif_collected){
-    free_list_shallow(elseif_collected);
+    free_list(elseif_collected);
     free(elseif_collected);
   }
   if(else_collected){
-    free_list_shallow(else_collected);
+    free_list(else_collected);
     free(else_collected);  
   }  
   return nextelseifnode;
 }
 astnode_t* parse_if(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
-  astnode_t* condition=list_get(collected, 0);
-  astnode_t *statements = list_get(collected, 1);
+  astnode_t* condition=*(astnode_t**)list_get(collected, 0);
+  astnode_t *statements = *(astnode_t**)list_get(collected, 1);
 
   astnode_t *elseifnode=NULL,*elsenode=NULL;
   list_t *elseif_collected = parse_by_recipe(tokens, iter, elseif_recipe, 6);
@@ -659,24 +660,24 @@ astnode_t* parse_if(list_t *collected, list_t *tokens, size_t *iter, filepos_t p
   astnode_t *ifnode = create_node(NODE_IF, condition, holder, NULL, pos);
 
   if(elseif_collected){
-    free_list_shallow(elseif_collected);
+    free_list(elseif_collected);
     free(elseif_collected);
   }
   if(else_collected){
-    free_list_shallow(else_collected);
+    free_list(else_collected);
     free(else_collected);  
   }  
   return ifnode;
 }
 astnode_t* parse_while(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
-  astnode_t* condition=list_get(collected, 0);
-  astnode_t* statements=list_get(collected, 1);
+  astnode_t* condition=*(astnode_t**)list_get(collected, 0);
+  astnode_t* statements=*(astnode_t**)list_get(collected, 1);
   astnode_t *whilenode =
       create_node(NODE_WHILE, condition, statements, NULL, pos);
   return whilenode;
 }
 astnode_t* parse_return(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
-  astnode_t* expr=list_get(collected, 0);
+  astnode_t* expr=*(astnode_t**)list_get(collected, 0);
   astnode_t *returnnode =
       create_node(NODE_RETURN, expr, NULL, NULL, pos);
   
@@ -689,10 +690,10 @@ astnode_t* parse_return_noexpr(list_t *collected, list_t *tokens, size_t *iter, 
   return returnnode;
 }
 astnode_t* parse_function(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
-  astnode_t* id=list_get(collected, 0);
-  astnode_t *args = list_get(collected, 1);
-  astnode_t *retkw = list_get(collected, 2);
-  astnode_t *body = list_get(collected, 3);
+  astnode_t* id=*(astnode_t**)list_get(collected, 0);
+  astnode_t *args = *(astnode_t**)list_get(collected, 1);
+  astnode_t *retkw = *(astnode_t**)list_get(collected, 2);
+  astnode_t *body = *(astnode_t**)list_get(collected, 3);
   // we need an extra leafholder to hold the rest two nodes together.
   astnode_t *two_holder = create_node(NODE_LEAFHOLDER, args, body, NULL, pos);
   astnode_t *funcnode =
@@ -701,7 +702,7 @@ astnode_t* parse_function(list_t *collected, list_t *tokens, size_t *iter, filep
   return funcnode;
 }
 astnode_t* parse_singleexpr(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
-  astnode_t *expr = list_get(collected, 0);
+  astnode_t *expr = *(astnode_t**)list_get(collected, 0);
   // we use leafholder here. it is ok beacuse the value of the expr will
   // be evaled anyway and the desired operations will still be done (func call, assignments etc.)
   astnode_t *singleexprnode =
@@ -712,7 +713,7 @@ astnode_t* parse_ext_vardecl(list_t *collected, list_t *tokens, size_t *iter, fi
   /* pattern:
      extern let id:type;
   */
-  astnode_t* idnode=list_get(collected, 0);
+  astnode_t* idnode=*(astnode_t**)list_get(collected, 0);
   astnode_t* declare_node =
     create_node(NODE_DECLARE_VAR, idnode, NULL, NULL, idnode->position);
   return declare_node;
@@ -721,8 +722,8 @@ astnode_t* parse_ext_funcdecl(list_t *collected, list_t *tokens, size_t *iter, f
   /* pattern:
      extern fn func(arglist):type;
   */
-  astnode_t* idnode=list_get(collected, 0);
-  astnode_t* arglistnode=list_get(collected, 1);
+  astnode_t* idnode=*(astnode_t**)list_get(collected, 0);
+  astnode_t* arglistnode=*(astnode_t**)list_get(collected, 1);
   astnode_t* declare_node = create_node(NODE_DECLARE_FUNC, idnode, arglistnode, NULL,
 					idnode->position);
   return declare_node;
@@ -780,7 +781,7 @@ astnode_t *parse_statement(list_t *tokens, size_t *iter) {
       continue;
     }
     astnode_t *node = syntaxes[i].builder(collected, tokens, &backup_iter, tok->position);
-    free_list_shallow(collected);
+    free_list(collected);
     free(collected);
     if(node){
       LOG(VERBOSE, "parsed %s.\n",syntaxes[i].name);

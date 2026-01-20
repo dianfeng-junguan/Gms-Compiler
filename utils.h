@@ -16,7 +16,8 @@ typedef struct
   size_t len;
   size_t capacity;
   size_t element_size;
-  void** array;
+  char* array;
+  
 }list_t;
 
 list_t create_list(size_t capacity, size_t element_size);

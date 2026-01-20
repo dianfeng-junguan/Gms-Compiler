@@ -23,17 +23,15 @@ bool is_symtab_dup(list_t* syms, char* name){
 /**
    reminder: name must lives longer than the symbol!!!
  **/
-symbol_t* create_symbol(char* name, symbol_kind_t type, symbol_type_t value_type, int layer){
-  symbol_t* sym=(symbol_t*)myalloc(sizeof(symbol_t));
-  assert(sym);
-  
-  sym->name=clone_str(name);
-  sym->type=type;
-  sym->sym_type=value_type;
-  sym->layer=layer;
-  sym->value=0;  
-  sym->is_extern=false;
-  return sym;
+symbol_t create_symbol(char* name, symbol_kind_t type, symbol_type_t value_type, int layer){
+  return (symbol_t){
+    .name=clone_str(name),
+    .type=type,
+    .sym_type=value_type,
+    .layer=layer,
+    .value=0,  
+    .is_extern=false
+  };
 }
 size_t while_depth = 0;
 symbol_type_t function_rettype = TYPE_VOID;
@@ -76,7 +74,7 @@ bool check_arglist(astnode_t* commalist, list_t* symbols, int layer, list_t* arg
     return false;
   }
   symbol_type_t passedtype=commalist->value_type;
-  symbol_type_t argtype=(symbol_type_t)list_get(arglist, index);
+  symbol_type_t argtype=*(symbol_type_t*)list_get(arglist, index);
   if(passedtype!=argtype){
     cry_errorf(SENDER_SEMATIC, pos, "expected type %d, found %d\n", (commalist->value_type),(argtype));
     return false;
@@ -129,19 +127,19 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       break;
     }
     // ok. add it to the symtab.
-    symbol_t* extsym=create_symbol(node->left->value, SYMBOL_VARIABLE, TYPE_INT, layer);
-    extsym->is_extern=true;
+    symbol_t extsym=create_symbol(node->left->value, SYMBOL_VARIABLE, TYPE_INT, layer);
+    extsym.is_extern=true;
     // for func declaration we need to scan the arglist
     if(node->node_type==NODE_DECLARE_FUNC){
-      init_list(&extsym->args, 6, sizeof(symbol_type_t));
-      current_func_arglist=&extsym->args;
+      init_list(&extsym.args, 6, sizeof(symbol_type_t));
+      current_func_arglist=&extsym.args;
       if(!check_statement(node->right, symbols, layer)){
 	success=false;
       }
       current_func_arglist=NULL;
       if(!success)break;
     }
-    list_append(symbols, extsym);
+    list_append(symbols, &extsym);
     break;
   }
   case NODE_DEFINITION: {
@@ -166,7 +164,8 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     // ok. add it to the symtab.
     // if there is no type explicitly written, we infer the type
     LOG(VERBOSE, "defining %s of type %d\n",node->left->value, node->right->value_type);
-    list_append(symbols, create_symbol(node->left->value, SYMBOL_VARIABLE, node->right->value_type, layer));
+    symbol_t sym=create_symbol(node->left->value, SYMBOL_VARIABLE, node->right->value_type, layer);
+    list_append(symbols, &sym);
     break;
   }
   case NODE_FUNCTION: {
@@ -180,15 +179,13 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       cry_error(SENDER_SEMATIC, "function name redefinition", pos);
     }
     
-    // ok. add the function to the symtab.
-    symbol_t* func_sym=create_symbol(node->left->value, SYMBOL_FUNCTION, node->value_type, layer);
-    list_append(symbols, func_sym);
+    symbol_t func_sym=create_symbol(node->left->value, SYMBOL_FUNCTION, node->value_type, layer);
     // init the function scope symtab first: inherit the parent symtab.
     init_list(&node->syms, symbols->capacity, symbols->element_size);
     list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
     // set the arglist
-    init_list(&func_sym->args, 6, sizeof(symbol_type_t));
-    current_func_arglist=&func_sym->args;
+    init_list(&func_sym.args, 6, sizeof(symbol_type_t));
+    current_func_arglist=&func_sym.args;
     // set the vars for return checking
     in_function=true;
     function_rettype=node->value_type;
@@ -199,7 +196,8 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     in_function=false;
     
     current_func_arglist=NULL;
-    
+    // ok. add the function to the symtab.
+    list_append(symbols, &func_sym);
     break;
   }
   case NODE_LEAFHOLDER:
@@ -234,8 +232,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     }else if(strcmp(node->right->value, "string")==0){
       argtype=TYPE_STRING;
     }
-    // ok. add it to the symtab.
-    list_append(symbols, create_symbol(node->left->value, SYMBOL_FUNCTION, argtype, layer));
+    symbol_t sym=create_symbol(node->left->value, SYMBOL_FUNCTION, argtype, layer);
     // add it to the function symbol arglist
     // argtype is small enough so we use list_t element to store it directly (though it's void*)
     if(!current_func_arglist){
@@ -243,7 +240,9 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       success=false;
       break;
     }
-    append(current_func_arglist, argtype);
+    append(current_func_arglist, &argtype);
+    // ok. add it to the symtab.
+    list_append(symbols, &sym);
     break;
   }
     
