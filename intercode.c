@@ -300,7 +300,7 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     CODE(code_list, CODE_LABEL, repeat_label, 0, 0);    
     char *cond_var = gen_node(node->left, code_list, tmpnum,layer+1);
     // CODE_CMP returns 0 if equ, for comparation nodes, they return 0 if condition is true
-    CODE(code_list, CODE_CMP, cond_var, "1", 0);
+    CODE(code_list, CODE_CMP, cond_var, "0", 0);
     char* true_label=mklabel();
     char* done_label=mklabel();
     // cond_var tmpvar freed

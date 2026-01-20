@@ -105,16 +105,14 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
     TWOOP(BITNOT, not);    
     
   case CODE_MUL: {
-    ASM("mov %s,%s\n",intercode->operand3str, intercode->operand1str);
-    ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",intercode->operand2str);
+    ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",intercode->operand1str);
     ASM("mul %s\n",intercode->operand2str);
     ASM("mov %s,rax\n",intercode->operand3str);
     ASM("pop rax\npop rdx\n");
     break;
   }
   case CODE_DIV: {
-    ASM("mov %s,%s\n",intercode->operand3str, intercode->operand1str);
-    ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",intercode->operand2str);
+    ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",intercode->operand1str);
     ASM("div %s\n",intercode->operand2str);
     ASM("mov %s,rax\n",intercode->operand3str);
     ASM("pop rax\npop rdx\n");
@@ -123,8 +121,7 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
   }
     
   case CODE_MOD: {
-    ASM("mov %s,%s\n",intercode->operand3str, intercode->operand1str);
-    ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",intercode->operand2str);
+    ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",intercode->operand1str);
     ASM("div %s\n",intercode->operand2str);
     ASM("mov %s,rdx\n",intercode->operand3str);
     ASM("pop rax\npop rdx\n");
@@ -160,7 +157,14 @@ void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subba
     break;
   }
   case CODE_MOV: {
-    ASM("mov %s,%s\n",intercode->operand1str, intercode->operand2str);
+    // TODO: a temp patchup. gonna replace it sometime
+#define NOTTMP(v) !(strlen(v)>=3&&memcmp(v,"tmp",3)==0)
+    if(NOTTMP(intercode->operand1str)&&NOTTMP(intercode->operand2str)){
+      // both are vars, which is not allowed in nasm
+      ASM("push rax\nmov rax,%s\nmov %s,rax\npop rax\n",intercode->operand2str, intercode->operand1str);
+    }else{
+      ASM("mov %s,%s\n",intercode->operand1str, intercode->operand2str);
+    }
     break;
   }
   case CODE_SCOPE_END: {
