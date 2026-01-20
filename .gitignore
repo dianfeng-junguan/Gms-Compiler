@@ -5,3 +5,11 @@
 #.*
 
 bin/
+
+*.asm
+
+log/
+
+/build/
+
+/.DS_Store
