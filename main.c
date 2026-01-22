@@ -68,11 +68,11 @@ int main(int argc, char** argv){
 #ifdef DEBUG
   for (size_t i=0; i < intercodes.len; ++i) {
     intercode_t* code=list_get(&intercodes, i);
-    printf("%s %s,%s,%s\n", codetype_tostr(code->type), code->varname, code->operand2str, code->store_var);
+    printf("%s %s,%s,%s\n", codetype_tostr(code->type), code->op1.value, code->op2.value, code->op3.value);
   }
 #endif
-  char* asmcode=asm_gen(&intercodes);
   
+  char* asmcode=amd64_gen(&intercodes);
   
   if(!asmcode){
     return -1;

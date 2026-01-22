@@ -1,19 +1,9 @@
-#include "asmgen.h"
+#include "string.h"
 #include "err.h"
-#include "utils.h"
-#include <assert.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "intercode.h"
-#define ASM(fmt, ...)                                                          \
-  do {                                                                         \
-    char *line = malloc(64);                                                   \
-    assert(line);                                                              \
-    snprintf(line, 64, fmt, ##__VA_ARGS__);				\
-    list_append(list_asm, &line);                                               \
-  } while (0);
+#include "asmgen.h"
+#include "assert.h"
+#include "stdlib.h"
+
 char *alloc_reg(list_t* regs, char* varname) {
   for (size_t i=0; i < regs->len; ++i) {
     reg_tmpvar_pair_t* p=list_get(regs, i);
@@ -34,194 +24,9 @@ void free_reg(list_t* regs, char* varname){
   }
 }
 
-static size_t stk_argsz=0;
-void asm_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table){
-  switch (intercode->type) {
-  case CODE_DATA_SECTION:
-    ASM("section .data\n");
-    break;
-  case CODE_TEXT_SECTION:
-    ASM("section .text\n");
-    break;
-  case CODE_GLOBAL_VAR_DATA:
-    ASM("%s: dq %s\n%%define %s qword [%s]\n",intercode->operand1str, intercode->operand2str,
-	intercode->operand1str, intercode->operand1str);
-    break;
-  case CODE_DATA:{
-    char* data=intercode->operand2str;
-    char* width="dq";
-    char* ending="";
-    if(data[0]=='\"'){
-      width="db";
-      ending=",0";
-    }
-    ASM("%s: %s %s%s\n",intercode->operand1str, width, intercode->operand2str, ending);
-    break;
-  }
-  case CODE_DEF_FUNC: {
-    ASM("global %s\n",intercode->label);
-    ASM("%s:\n",intercode->label);
-    ASM("push rbp\nmov rbp,rsp\n");    
-    break;
-  }
-  case CODE_RETURN: {
-    if(intercode->operand1){
-      ASM("mov rax,%s\n",intercode->operand1str);
-    }
-    ASM("mov rsp,rbp\npop rbp\nret\n");
-    break;
-  }
-  case CODE_ALLOC_GLOBAL:{
-    char* initv=intercode->operand2str;
-    if(!initv)initv="0";
-    ASM("%s: dq %s\n",intercode->label,initv);
-    ASM("%%define %s qword [%s]\n",intercode->label, intercode->label);
-    break;
-  }
-  case CODE_ALLOC_LOCAL: {
-    ASM("sub rsp,%s\n",intercode->operand2str);
-    size_t var_size=atoi(intercode->operand2str);
-    *stack_subbase=*stack_subbase+var_size;
-    ASM("%%define %s qword [rbp-%zu]\n",intercode->operand1str,*stack_subbase);    
-    break;
-  }
-  case CODE_ALLOC_TMP: {
-    // todo: alloc registers accordingly
-    char* reg=alloc_reg(reg_table, intercode->operand1str);
-    ASM("%%define %s %s\n",intercode->operand1str,reg);
-    break;
-  }    
-#define TWOOP(codenoprefix,ins)						\
-    case CODE_##codenoprefix: {						\
-      ASM("mov %s,%s\n%s %s,%s\n",intercode->operand3str,intercode->operand1str, \
-	  #ins,intercode->operand3str,intercode->operand2str);		\
-      break;								\
-    }
-    
-    TWOOP(ADD, add);
-    TWOOP(SUB, sub);
-    TWOOP(BITAND, and);
-    TWOOP(BITOR, or);
-    TWOOP(BITNOT, not);    
-    
-  case CODE_MUL: {
-    ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",intercode->operand1str);
-    ASM("mul %s\n",intercode->operand2str);
-    ASM("mov %s,rax\n",intercode->operand3str);
-    ASM("pop rax\npop rdx\n");
-    break;
-  }
-  case CODE_DIV: {
-    ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",intercode->operand1str);
-    ASM("div %s\n",intercode->operand2str);
-    ASM("mov %s,rax\n",intercode->operand3str);
-    ASM("pop rax\npop rdx\n");
-    break;
-    break;
-  }
-    
-  case CODE_MOD: {
-    ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",intercode->operand1str);
-    ASM("div %s\n",intercode->operand2str);
-    ASM("mov %s,rdx\n",intercode->operand3str);
-    ASM("pop rax\npop rdx\n");
-    break;
-    break;
-  }
-  case CODE_CMP: {
-    ASM("cmp %s,%s\n",intercode->operand1str, intercode->operand2str);
-    break;
-  }
-  case CODE_DECLARE: {
-    // do nothing
-    break;
-  }
-  case CODE_EXTERN_DECLARE: {
-    ASM("extern %s\n",intercode->operand1str);
-    break;
-  }
-#define JMP(codenoprefix)					\
-    case CODE_##codenoprefix: {					\
-      ASM("%s near %s\n",#codenoprefix,intercode->operand1str);	\
-      break;							\
-  }
-    JMP(JE);
-    JMP(JNE);
-    JMP(JA);
-    JMP(JB);
-    JMP(JAE);
-    JMP(JBE);
-    JMP(JMP);
-  case CODE_LABEL: {
-    ASM("%s:\n",intercode->label);
-    break;
-  }
-  case CODE_MOV: {
-    // TODO: a temp patchup. gonna replace it sometime
-#define NOTTMP(v) !(strlen(v)>=3&&memcmp(v,"tmp",3)==0)
-    if(NOTTMP(intercode->operand1str)&&NOTTMP(intercode->operand2str)){
-      // both are vars, which is not allowed in nasm
-      ASM("push rax\nmov rax,%s\nmov %s,rax\npop rax\n",intercode->operand2str, intercode->operand1str);
-    }else{
-      ASM("mov %s,%s\n",intercode->operand1str, intercode->operand2str);
-    }
-    break;
-  }
-  case CODE_SCOPE_END: {
-    // actually we do not really need to free the stack alloced by the deeper scope.
-    // when func returns, they will all be freed.
-    break;
-  }
-    
-  case CODE_DEF_FUNC_END: {
-    *stack_subbase=0;
-    break;
-  }
-  case CODE_FREE: {
-    // useful for tempvars
-    // todo: free tmpvars
-    break;
-  }
-  case CODE_PUSHARG: {
-    // push arg
-    ASM("push %s\n",intercode->operand1str);
-    stk_argsz+=8;
-    break;
-  }
-  case CODE_FUNCCALL: {
-    /* to pass args. we store the value of tmpvars into stack and then mov it to the registers before
-     calling the func*/
-    ASM("push rdi\npush rsi\npush rdx\npush rcx\npush r8\npush r9\n");
-    char* regs[]={"rdi","rsi","rdx","rcx","r8","r9"};
-    for (size_t i=0; i < stk_argsz/8; ++i) {
-      // we copy the part that overflows registers reversely to meet system V
-      // since the earlier pushargs are from left to right
-      ASM("mov %s,[rsp+48+%zu]\n",(i<6?regs[i]:"rax"),i*8);
-      if(i>=6){
-	ASM("push rax\n");
-      }
-    }
-    ASM("call %s\n",intercode->operand1str);
-    if(stk_argsz>48){
-      ASM("add rsp,%zu\n",stk_argsz-48);
-    }
-    // restore the stacks used to pass args
-    ASM("pop r9\npop r8\npop rcx\npop rdx\npop rsi\npop rdi\n");
-    ASM("add rsp,%zu\n",stk_argsz);
-    stk_argsz=0;
-    break;
-  }
-  case CODE_STORE_RETV: {
-    ASM("mov %s,rax\n",intercode->operand1str);
-    break;
-  }
-  default:
-    cry_errorf(SENDER_ASMGEN, (filepos_t){0},
-	       "fatal: met unrecognized intercode %s.",codetype_tostr(intercode->type));
-    exit(-1);
-    break;
-  }
-}
+
+void free_reg_str_pair(reg_tmpvar_pair_t *p) {}
+
 reg_tmpvar_pair_t* create_regvar(char* reg){
   reg_tmpvar_pair_t* stru=malloc(sizeof(reg_tmpvar_pair_t));
   assert(stru);
@@ -229,56 +34,39 @@ reg_tmpvar_pair_t* create_regvar(char* reg){
   stru->var=NULL;
   return stru;
 }
-void free_reg_str_pair(reg_tmpvar_pair_t* p){
-  
-}
-#define ASMU(codes,fmt, ...)			\
-  do {						\
-    char *line = malloc(64);			\
-    assert(line);				\
-    snprintf(line, 64, fmt, ##__VA_ARGS__);	\
-    list_append(codes, &line);			\
-  } while (0);
-char* asm_gen(list_t* intercodes){
-  list_t asm_codes=create_list(20, sizeof(char*));
-  size_t stk=0;
-  list_t reg_table=create_list(6, sizeof(reg_tmpvar_pair_t));
-  list_append(&reg_table, create_regvar("rax"));
-  list_append(&reg_table, create_regvar("rbx"));
-  list_append(&reg_table, create_regvar("rcx"));
-  list_append(&reg_table, create_regvar("rdx"));
-  list_append(&reg_table, create_regvar("rdi"));
-  list_append(&reg_table, create_regvar("rsi"));
-  // something
-  ASMU(&asm_codes, "bits 64\n");
-  ASMU(&asm_codes, "default rel\n");
-  
-  for (size_t i=0; i < intercodes->len; ++i) {
-    asm_translate(&asm_codes, list_get(intercodes, i),&stk,&reg_table);    
-  }
-  // now concat the codes
-  size_t nowcapa=128;
-  size_t nowsize=0;
-  char* result=malloc(nowcapa);
-  for (size_t i=0; i < asm_codes.len; ++i) {
-    char* line=*(char**)list_get(&asm_codes, i);
-    size_t linel=strlen(line);
-    // extend
-    while(nowsize+linel>=nowcapa){
-      nowcapa*=2;
-      result=realloc(result, nowcapa);      
+
+static abi_t abis[]={
+  {
+    .type=ABI_SYSTEMV,
+    .arg_regs={"rdi", "rsi", "rdx", "rcx", "r8", "r9"},
+    .arg_regs_num=6,
+    .caller_saved_regs={
+      "rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"
+    },
+    .caller_saved_regs_num=9,
+    .callee_saved_regs={
+      "rbx","rbp","rsp","r12", "r13", "r14", "r15"
+    },
+    .callee_saved_regs_num=7
+  },
+  {
+    .type=ABI_MICROSOFT,
+    .arg_regs={"rcx", "rdx", "r8", "r9"},
+    .arg_regs_num=4,
+    .caller_saved_regs={
+      "rax","rcx","rdx","r8","r9","r10","r11"
+    },
+    .caller_saved_regs_num=7,
+    .callee_saved_regs={
+      "rbx", "rbp", "rdi", "rsi", "r12", "r13", "r14", "r15"
+    },
+    .callee_saved_regs_num=8
+  },
+};
+abi_t get_abi(abitype_t abi){
+  for (size_t i=0; i<sizeof(abis)/sizeof(abi_t); i++) {
+    if (abis[i].type==abi) {
+      return abis[i];
     }
-    //copy
-    strcpy(result+nowsize, line);
-    nowsize+=linel;
-    
   }
-  // free the previous line str
-  for (size_t i=0; i < asm_codes.len; ++i) {
-    char* line=*(char**)list_get(&asm_codes, i);
-    free(line);
-  }
-  free_list(&asm_codes);
-  FREE_LIST_DTOR(&reg_table, free_reg_str_pair);
-  return result;
 }
