@@ -5,6 +5,7 @@ typedef enum {
   // we put other subnodes under a new leafholder which is under the real
   // parent.
   NODE_LEAFHOLDER,
+  NODE_SINGLEEXPR,
   // values
   NODE_CONSTANT,
   NODE_IDENTIFIER,

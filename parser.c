@@ -15,6 +15,7 @@ static char *nodetype_str_map[NODETYPE_MAP_MAX] = {
     // we put other subnodes under a new leafholder which is under the real
     // parent.
     [NODE_LEAFHOLDER] = "NODE_LEAFHOLDER",
+    [NODE_SINGLEEXPR] = "NODE_SINGLEEXPR",
     // values
     [NODE_CONSTANT] = "NODE_CONSTANT",
     [NODE_IDENTIFIER] = "NODE_IDENTIFIER",
@@ -703,10 +704,8 @@ astnode_t* parse_function(list_t *collected, list_t *tokens, size_t *iter, filep
 }
 astnode_t* parse_singleexpr(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
   astnode_t *expr = *(astnode_t**)list_get(collected, 0);
-  // we use leafholder here. it is ok beacuse the value of the expr will
-  // be evaled anyway and the desired operations will still be done (func call, assignments etc.)
   astnode_t *singleexprnode =
-      create_node(NODE_LEAFHOLDER, expr, NULL, NULL, pos);
+      create_node(NODE_SINGLEEXPR, expr, NULL, NULL, pos);
   return singleexprnode;
 }
 astnode_t* parse_ext_vardecl(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){

@@ -2,6 +2,7 @@
 #include "err.h"
 #include "utils.h"
 #include <assert.h>
+#include <corecrt.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +26,7 @@ static char* format_operand(operand_t op,list_t* reg_table){
 	return pair->reg;
       }
     }
-    cry_errorf(SENDER_ASMGEN, ((filepos_t){0,0}), "tmpvar used before alloced");
+    //cry_errorf(SENDER_ASMGEN, ((filepos_t){0,0}), "tmpvar used before alloced");
     break;
   }
   default:break;
@@ -177,7 +178,7 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
   }
   case CODE_FREE: {
     // useful for tempvars
-    // todo: free tmpvars
+    free_reg(reg_table, op1);
     break;
   }
   case CODE_PUSHARG: {
@@ -191,31 +192,43 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
      calling the func*/
     /* TODO: auto select abi */
     abi_t abi=get_abi(ABI_MICROSOFT);
-    for (size_t i=0; i<abi.arg_regs_num; i++) {
-      ASM("push %s\n",abi.arg_regs[i]);
+    char* ret_reg=op2;
+    // save used caller-saved regs but the reg used to store return value
+    size_t pushed_regs_num=0;
+    for (size_t i=0; i<abi.caller_saved_regs_num; i++) {
+      if(is_reg_used(reg_table, abi.caller_saved_regs[i])&&strcmp(ret_reg,abi.caller_saved_regs[i])!=0){
+	ASM("push %s\n",abi.caller_saved_regs[i]);
+	pushed_regs_num++;
+      }
     }
     for (size_t i=0; i < stk_argsz/8; ++i) {
       // we copy the part that overflows registers reversely
       // since the earlier pushargs are from left to right
-      ASM("mov %s,[rsp+48+%zu]\n",(i<abi.arg_regs_num?abi.arg_regs[i]:"rax"),i*8);
+      ASM("mov %s,[rsp+%zu+%zu]\n",(i<abi.arg_regs_num?abi.arg_regs[i]:"rax"),8*pushed_regs_num,i*8);
       if(i>=abi.arg_regs_num){
+	// push the arg when num of args is more than arg registers
 	ASM("push rax\n");
       }
     }
     ASM("call %s\n",op1);
-    if(stk_argsz>48){
-      ASM("add rsp,%zu\n",stk_argsz-48);
+    if(stk_argsz>8*abi.arg_regs_num){
+      ASM("add rsp,%zu\n",stk_argsz-8*abi.arg_regs_num);
+    }
+    if(op2){
+      // store the return value
+      ASM("mov %s,rax\n",op2);
     }
     // restore the stacks used to pass args
-    for (size_t i=abi.arg_regs_num; i>0; i--) {
-      ASM("pop %s\n",abi.arg_regs[i-1]);
+    for (size_t i=abi.caller_saved_regs_num; i>0; i--) {
+      if(is_reg_used(reg_table, abi.caller_saved_regs[i-1])&&strcmp(ret_reg,abi.caller_saved_regs[i-1])!=0){
+	ASM("pop %s\n",abi.caller_saved_regs[i-1]);
+      }
     }
     ASM("add rsp,%zu\n",stk_argsz);
     stk_argsz=0;
     break;
   }
   case CODE_STORE_RETV: {
-    ASM("mov %s,rax\n",op1);
     break;
   }
   default:
@@ -236,12 +249,10 @@ char* amd64_gen(list_t* intercodes){
   list_t asm_codes=create_list(20, sizeof(char*));
   size_t stk=0;
   list_t reg_table=create_list(6, sizeof(reg_tmpvar_pair_t));
-  list_append(&reg_table, create_regvar("rax"));
-  list_append(&reg_table, create_regvar("rbx"));
-  list_append(&reg_table, create_regvar("rcx"));
-  list_append(&reg_table, create_regvar("rdx"));
-  list_append(&reg_table, create_regvar("rdi"));
-  list_append(&reg_table, create_regvar("rsi"));
+  abi_t abi=get_abi(ABI_MICROSOFT);
+  for (size_t i=0; i<abi.caller_saved_regs_num; i++) {
+    list_append(&reg_table, create_regvar(abi.caller_saved_regs[i]));
+  }
   // something
   ASMU(&asm_codes, "bits 64\n");
   ASMU(&asm_codes, "default rel\n");

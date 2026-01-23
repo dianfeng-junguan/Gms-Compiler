@@ -5,6 +5,7 @@
 #include "parser.h"
 #include "sematic.h"
 #include <assert.h>
+#include <corecrt.h>
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
@@ -59,19 +60,20 @@ void free_intercode(intercode_t* code){
 }
 char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer);
 size_t gen_arglist_node(astnode_t *node, list_t *code_list, int tmpnum,
-                        int layer) {
+                        int layer, list_t *tmpvars) {
   size_t num_args=0;
   // used to gen intercode for commalist in NODE_FUNCCALL
   switch (node->node_type) {
   case NODE_COMMALIST: {
     // more args
-    num_args+=gen_arglist_node(node->left, code_list, tmpnum, layer);
-    num_args+=gen_arglist_node(node->right, code_list, tmpnum, layer);    
+    num_args+=gen_arglist_node(node->left, code_list, tmpnum, layer,tmpvars);
+    num_args+=gen_arglist_node(node->right, code_list, tmpnum, layer,tmpvars);    
     break;
   }
   default:{
     // an arg
     char *arg = gen_node(node, code_list, tmpnum, layer);
+    append(tmpvars, &arg);
     // push the arg
     CODE(code_list, CODE_PUSHARG, TMP(arg), EMPTY, EMPTY);
     // one arg    
@@ -130,6 +132,7 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
      tmpv = gen_node(node->left, code_list, tmpnum,layer+1);      
     }
     CODE(code_list, CODE_RETURN, TMP(tmpv), EMPTY, EMPTY);
+    CODE(code_list, CODE_FREE, TMP(tmpv), EMPTY, EMPTY);
     break;
   }
   case NODE_ASSIGN: {
@@ -137,11 +140,13 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     char *assigned = node->left->value;
     char* rhs = gen_node(node->right, code_list, tmpnum,layer+1);
     CODE(code_list, CODE_MOV,VALUE(assigned),TMP(rhs),EMPTY);
+    CODE(code_list, CODE_FREE, TMP(rhs), EMPTY, EMPTY);
     break;
   }
   case NODE_DEFINITION: {
     char* rhs=gen_node(node->right, code_list, tmpnum,layer+1);
     CODE(code_list, CODE_MOV, VALUE(node->left->value), TMP(rhs), EMPTY);
+    CODE(code_list, CODE_FREE, TMP(rhs), EMPTY, EMPTY);
     break;
   }
 #define TWOOP_INTERCODE(type_noprefix)                                         \
@@ -150,11 +155,13 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     char *lhs = gen_node(node->left, code_list, tmpnum, layer + 1);            \
     char *rhs = gen_node(node->right, code_list, tmpnum + 1, layer + 2);       \
     char *res = make_tmpvar(tmpnum + 3);                                       \
-    CODE(code_list, CODE_ALLOC_TMP, TMP(res), IMM("8"), EMPTY);			\
-    CODE(code_list, CODE_##type_noprefix, TMP(lhs), TMP(rhs), TMP(res));	\
+    CODE(code_list, CODE_ALLOC_TMP, TMP(res), IMM("8"), EMPTY);                \
+    CODE(code_list, CODE_##type_noprefix, TMP(lhs), TMP(rhs), TMP(res));       \
+    CODE(code_list, CODE_FREE, TMP(lhs), EMPTY, EMPTY);                        \
+    CODE(code_list, CODE_FREE, TMP(rhs), EMPTY, EMPTY);                        \
     return res;                                                                \
     break;                                                                     \
-  }
+  }    
     
   case NODE_COMMALIST: {
     // return the value of the rightest part
@@ -191,6 +198,8 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
       CODE(code_list, CODE_LABEL, ADDR(truelbl), EMPTY, EMPTY);		\
       CODE(code_list, CODE_MOV, TMP(tmpv), IMM("1"), EMPTY);		\
       CODE(code_list, CODE_LABEL, ADDR(donelbl), EMPTY, EMPTY);		\
+      CODE(code_list, CODE_FREE, TMP(lhs), EMPTY, EMPTY);		\
+      CODE(code_list, CODE_FREE, TMP(rhs), EMPTY, EMPTY);		\
       return tmpv;                                                             \
       break;                                                                   \
   }
@@ -232,12 +241,21 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   }
   case NODE_FUNCCALL: {
     // gen arglist first
-    size_t num_args=0;
-    num_args=gen_arglist_node(node->right, code_list, tmpnum,layer+1);
+    // keep the tmpvars used to push args used until we finished storing the return value
+    list_t tmp_vars=create_list(10, sizeof(char*));
+    size_t tmpargnum=gen_arglist_node(node->right, code_list, tmpnum,layer+1,&tmp_vars);
+    tmpnum+=tmpargnum;
     // then call the function
-    CODE(code_list, CODE_FUNCCALL, ADDR(node->left->value), EMPTY, EMPTY);
     char* rettmpvar=make_tmpvar(tmpnum+1);
-    CODE(code_list, CODE_STORE_RETV, TMP(rettmpvar), EMPTY, EMPTY);
+    CODE(code_list, CODE_ALLOC_TMP, TMP(rettmpvar), EMPTY, EMPTY);
+    CODE(code_list, CODE_FUNCCALL, ADDR(node->left->value), TMP(rettmpvar), EMPTY);
+    for (size_t i=0; i<tmp_vars.len; i++) {
+      char* tmpv=*(char**)list_get(&tmp_vars, i);
+      CODE(code_list, CODE_FREE, TMP(tmpv), EMPTY, EMPTY);
+      // free the generated tmpv string
+      myfree(tmpv);
+    }
+    free_list(&tmp_vars);
     return rettmpvar;
     break;
   }
@@ -251,9 +269,26 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     }    
     break;
   }
+  case NODE_SINGLEEXPR:{
+    if(node->left){
+      char* tmpv=gen_node(node->left, code_list, tmpnum,layer);
+      if(tmpv){
+	CODE(code_list, CODE_FREE, TMP(tmpv), EMPTY, EMPTY);
+      }
+    }
+    if(node->right){
+      char* tmpv=gen_node(node->right, code_list, tmpnum,layer);
+      if(tmpv){
+	CODE(code_list, CODE_FREE, TMP(tmpv), EMPTY, EMPTY);
+      }
+    }
+    break;
+  }
   case NODE_ARGPAIR: {
     // left is the name
-    CODE(code_list, CODE_PUSHARG, TMP(node->left->value), EMPTY, EMPTY);
+    char* tmpv=gen_node(node->left, code_list, tmpnum, layer);
+    CODE(code_list, CODE_PUSHARG, TMP(tmpv), EMPTY, EMPTY);
+    CODE(code_list, CODE_FREE, TMP(tmpv), EMPTY, EMPTY);
     break;
   }
   case NODE_ELSEIF:
@@ -261,6 +296,7 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     char *cond_var = gen_node(node->left, code_list, tmpnum,layer+1);
     // for comparation nodes, they return 1 if condition is true
     CODE(code_list, CODE_CMP, TMP(cond_var), IMM("1"), EMPTY);
+    CODE(code_list, CODE_FREE, TMP(cond_var), EMPTY, EMPTY);
     char* true_label=mklabel();
     char* done_label=mklabel();
     // cond_var tmpvar freed
@@ -301,6 +337,7 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     char *cond_var = gen_node(node->left, code_list, tmpnum,layer+1);
     // CODE_CMP returns 0 if equ, for comparation nodes, they return 0 if condition is true
     CODE(code_list, CODE_CMP, TMP(cond_var), IMM("0"), EMPTY);
+    CODE(code_list, CODE_FREE, TMP(cond_var), EMPTY, EMPTY);
     char* true_label=mklabel();
     char* done_label=mklabel();
     // cond_var tmpvar freed

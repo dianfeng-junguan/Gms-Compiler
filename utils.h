@@ -41,7 +41,7 @@ typedef void (*copy_callback)(void* old, void* newt);
    this will directly overwrite the dest list, so store the value before doing this.
  **/
 void list_copy(list_t* dest, list_t* src, copy_callback callback);
-
+void list_concat(list_t* dest,list_t* src);
 void free_list(list_t* list);
 void free_list_shallow(list_t *list);
 typedef void (*list_ele_dtor)(void *element);
