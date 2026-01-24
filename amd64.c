@@ -155,7 +155,14 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
     TWOOP(BITAND, and);
     TWOOP(BITOR, or);
     TWOOP(BITNOT, not);    
-    
+  case CODE_REFER:{
+    ASM("lea %s,%s\n",op1,op2);
+    break;
+  }
+  case CODE_DEFER:{
+    ASM("mov %s,%s\nmov %s,[%s]\n",op1,op2,op1,op1);
+    break;
+  }
   case CODE_MUL: {
     ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",op1);
     ASM("mul %s\n",op2);

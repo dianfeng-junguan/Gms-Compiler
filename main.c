@@ -15,7 +15,7 @@
 
 
 void print_node(astnode_t* node, int indent){
-  printf("%*s%s=%s@%d type %d\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer, node->value_type);
+  printf("%*s%s=%s@%d type %d\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer, node->value_type.main_type);
   if(node->left)
     print_node(node->left, indent+2); 
   if(node->right)
@@ -53,7 +53,7 @@ int main(int argc, char** argv){
 	printf("error: need output file after -o\n");
 	return 0;
       }
-      input=argv[i];
+      output=argv[i];
     }else if (strcmp(arg, "--abi")==0) {
       i++;
       if(i>=argc){
@@ -68,6 +68,9 @@ int main(int argc, char** argv){
 	return 0;
       }
       arch_str=argv[i];
+    }else{
+      printf("error: unrecognized option \'%s\'\n", argv[i]);
+      return 0;
     }
   }
   if(!input){
@@ -94,7 +97,8 @@ int main(int argc, char** argv){
   }
   FILE* f=fopen(input, "r");
   if(!f){
-    perror("failed open input file");
+    printf("failed open input file %s",input);
+    perror(":");
     return -1;
   }
   fseek(f, 0, SEEK_END);
@@ -103,11 +107,13 @@ int main(int argc, char** argv){
   char* source=malloc(len+1);
   memset(source, 0, len+1);
   size_t read=fread(source, len, 1, f);
-  if (read<1) {
-    printf("error while reading file:%zu<%zu.\n",read,1l);
-    free(source);
-    return -2;
-  }
+  /******************************************/
+  /* if (read<1) {			    */
+  /*   perror("error while reading file."); */
+  /*   free(source);			    */
+  /*   return -2;			    */
+  /* }					    */
+  /******************************************/
   list_t tokens=do_lex(source);
   // free the source
   free(source);

@@ -171,14 +171,27 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     break;
   }
     
-    TWOOP_INTERCODE(ADD)
-      TWOOP_INTERCODE(SUB)
-      TWOOP_INTERCODE(MUL)
-      TWOOP_INTERCODE(DIV)
-      TWOOP_INTERCODE(MOD)
+    TWOOP_INTERCODE(ADD);
+    TWOOP_INTERCODE(SUB);
+    TWOOP_INTERCODE(MUL);
+    TWOOP_INTERCODE(DIV);
+    TWOOP_INTERCODE(MOD);
       
-      TWOOP_INTERCODE(BITAND)
-      TWOOP_INTERCODE(BITOR)
+    TWOOP_INTERCODE(BITAND);
+    TWOOP_INTERCODE(BITOR);
+
+  case NODE_REFER:{
+    char* res=make_tmpvar(tmpnum+1);
+    CODE(code_list, CODE_REFER, TMP(res), ADDR(node->right->value), EMPTY);
+    return res;
+    break;
+  }
+  case NODE_DEFER:{
+    char* res=make_tmpvar(tmpnum+1);
+    CODE(code_list, CODE_DEFER, TMP(res), ADDR(node->right->value), EMPTY);
+    return res;
+    break;
+  }
       // TWOOP_INTERCODE(BITNOT)
       /*
 	the comparing node returns 1 if true, otherwise 0 as false.
@@ -424,6 +437,9 @@ static char *codetype_strs[] = {
   [CODE_MUL]="CODE_MUL",
   [CODE_DIV]="CODE_DIV",
   [CODE_MOD]="CODE_MOD",
+  
+  [CODE_REFER]="CODE_REFER",
+  [CODE_DEFER]="CODE_DEFER",
   [CODE_BITAND]="CODE_BITAND",
   [CODE_BITOR]="CODE_BITOR",
   [CODE_BITNOT]="CODE_BITNOT",
@@ -447,7 +463,10 @@ static char *codetype_strs[] = {
   [CODE_DATA]="CODE_DATA",
   [CODE_DATA_SECTION]="CODE_DATA_SECTION",
   [CODE_TEXT_SECTION]="CODE_TEXT_SECTION",
-  
+  //
+  [CODE_LOAD]="CODE_LOAD",
+  [CODE_STORE]="CODE_STORE",
+  [CODE_M2M]="CODE_M2M",
 };
 char *codetype_tostr(intercode_type_t type) {
   return codetype_strs[type];

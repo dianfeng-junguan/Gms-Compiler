@@ -114,7 +114,7 @@ bool number_after(char *str, list_t *tokens, filepos_t pos) {
 
 bool word_begin(char c) { return isalpha(c) || c == '_'; }
 bool word_allowed(char c, char *start, size_t offset) {
-  return isalpha(c) || c == '_';
+  return isalpha(c) || isdigit(c) || c == '_';
 }
 typedef struct {
   char *str;
@@ -167,6 +167,8 @@ static str_op_pair_t operators[] = {
     {"<", GREATER},     {">", LESS},
 
     {"=", ASSIGN},
+    {"&", BITAND},
+    {"|", BITOR},
 
 };
 

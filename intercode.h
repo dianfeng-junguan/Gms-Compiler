@@ -18,6 +18,8 @@ typedef enum {
   CODE_MUL,
   CODE_DIV,
   CODE_MOD,
+  CODE_REFER,
+  CODE_DEFER,
   CODE_BITAND,
   CODE_BITOR,
   CODE_BITNOT,

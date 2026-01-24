@@ -1,5 +1,6 @@
 #include "sematic.h"
 #include "parser.h"
+#include "lexer.h"
 #include "err.h"
 #include "utils.h"
 #include <assert.h>
@@ -34,10 +35,10 @@ symbol_t create_symbol(char* name, symbol_kind_t type, symbol_type_t value_type,
   };
 }
 size_t while_depth = 0;
-symbol_type_t function_rettype = TYPE_VOID;
+symbol_type_t function_rettype = {TYPE_VOID, TYPE_VOID};
 bool in_function = false;
 list_t *current_func_arglist = NULL;
-#include "lexer.h"
+
 #define CHK(expr, errmsg, pos)				\
     if(!(expr)){					\
       cry_error(SENDER_SEMATIC, errmsg, pos);		\
@@ -75,8 +76,10 @@ bool check_arglist(astnode_t* commalist, list_t* symbols, int layer, list_t* arg
   }
   symbol_type_t passedtype=commalist->value_type;
   symbol_type_t argtype=*(symbol_type_t*)list_get(arglist, index);
-  if(passedtype!=argtype){
-    cry_errorf(SENDER_SEMATIC, pos, "expected type %d, found %d\n", (commalist->value_type),(argtype));
+  if(symtypcmp(passedtype,argtype)){
+    cry_errorf(SENDER_SEMATIC, pos, "expected type %d,%d , found %d,%d\n",
+	       (commalist->value_type.main_type),(commalist->value_type.minor_type),
+	       (argtype.main_type),(argtype.minor_type));
     return false;
   }
   return true;
@@ -99,7 +102,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       assert(node->value);
       if(strcmp(node->value, sym->name)==0){
 	// found
-	LOG(VERBOSE, "identifier found defined symbol %s, type %d\n", node->value, sym->sym_type);
+	LOG(VERBOSE, "identifier found defined symbol %s, type %d,%d\n", node->value, sym->sym_type.main_type,sym->sym_type.minor_type);
 	node->value_type=sym->sym_type;
 	f=true;
       }
@@ -127,7 +130,8 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       break;
     }
     // ok. add it to the symtab.
-    symbol_t extsym=create_symbol(node->left->value, SYMBOL_VARIABLE, TYPE_INT, layer);
+    /* TODO: make extern declare include type info */
+    symbol_t extsym=create_symbol(node->left->value, SYMBOL_VARIABLE, (symbol_type_t){TYPE_INT, TYPE_VOID}, layer);
     extsym.is_extern=true;
     // for func declaration we need to scan the arglist
     init_list(&node->syms, 10, sizeof(symbol_t));
@@ -167,8 +171,17 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     }
     // ok. add it to the symtab.
     // if there is no type explicitly written, we infer the type
-    LOG(VERBOSE, "defining %s of type %d\n",node->left->value, node->right->value_type);
-    symbol_t sym=create_symbol(node->left->value, SYMBOL_VARIABLE, node->right->value_type, layer);
+    symbol_type_t inferred=node->left->value_type;
+    if(node->left->value_type.main_type==TYPE_VOID){
+      inferred=node->right->value_type;
+    }else if(symtypcmp(node->right->value_type,node->left->value_type)!=0){
+      // check if the expr conforms to the type comment
+      cry_errorf(SENDER_SEMATIC, pos, "expected type %d, found type %d\n",node->left->value_type.main_type,node->right->value_type.main_type);
+      success=false;
+      break;
+    }
+    LOG(VERBOSE, "defining %s of type %d, %d\n",node->left->value, inferred.main_type,inferred.minor_type);
+    symbol_t sym=create_symbol(node->left->value, SYMBOL_VARIABLE, inferred, layer);
     list_append(symbols, &sym);
     break;
   }
@@ -196,7 +209,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     if(node->right){
       check_statement(node->right, &node->syms, layer+1);
     }
-    function_rettype=TYPE_VOID;
+    function_rettype=(symbol_type_t){TYPE_VOID,TYPE_VOID};
     in_function=false;
     
     current_func_arglist=NULL;
@@ -230,13 +243,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       success=false;
       break;
     }
-    symbol_type_t argtype=TYPE_VOID;
-    if(strcmp(node->right->value, "int")==0){
-      argtype=TYPE_INT;
-    }else if(strcmp(node->right->value, "string")==0){
-      argtype=TYPE_STRING;
-    }
-    symbol_t sym=create_symbol(node->left->value, SYMBOL_FUNCTION, argtype, layer);
+    symbol_t sym=create_symbol(node->left->value, SYMBOL_FUNCTION, node->right->value_type, layer);
     // add it to the function symbol arglist
     // argtype is small enough so we use list_t element to store it directly (though it's void*)
     if(!current_func_arglist){
@@ -244,7 +251,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       success=false;
       break;
     }
-    append(current_func_arglist, &argtype);
+    append(current_func_arglist, &node->right->value_type);
     // ok. add it to the symtab.
     list_append(symbols, &sym);
     break;
@@ -305,7 +312,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       break;
     }
     // check right expr
-    symbol_type_t rett=TYPE_VOID;
+    symbol_type_t rett={TYPE_VOID,TYPE_VOID};
     if(node->left){
       check_statement(node->left, symbols,layer);
       rett=node->left->value_type;
@@ -313,7 +320,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       break;
     }
     // check whether the return type meets the function type
-    if(function_rettype!=rett){
+    if(symtypcmp(function_rettype,rett)==0){
       cry_errorf(SENDER_SEMATIC, pos, "return type does not meet the function type");
       success=false;
       break;
@@ -362,7 +369,7 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
       break;
     }
     // infer the type of the expression
-    if(node->left->value_type!=node->right->value_type){
+    if(symtypcmp(node->left->value_type,node->right->value_type)!=0){
       cry_error(SENDER_SEMATIC, "left expression type and right expression type are not the same", pos);
       success=false;
       break;
@@ -371,9 +378,60 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     node->value_type=node->left->value_type;
     break;
   }
+  case NODE_REFER:{
+    if(node->right){
+      CHKSTMT(node->right, symbols,layer);
+    }else{
+      cry_error(SENDER_SEMATIC, "no right expression", pos);
+      success=false;
+      break;
+    }
+    if(node->right->node_type!=NODE_IDENTIFIER){
+      // we only allow referring a variable;
+      cry_error(SENDER_SEMATIC, "trying to refer a non-variable value", pos);
+      success=false;
+      break;
+    }
+    // infer the type of the expression
+    node->value_type.pointer_level=node->right->value_type.pointer_level+1;
+    if(node->value_type.pointer_level==1){
+      // start to be a pointer
+      node->value_type.minor_type=node->right->value_type.main_type;
+      node->value_type.main_type=TYPE_POINTER; 
+    }
+    break;
+  }
   case NODE_BREAK: {
     if(while_depth==0){
       cry_error(SENDER_SEMATIC, "found break not in while", pos);
+    }
+    break;
+  }
+  case NODE_DEFER:{
+    if(node->right){
+      CHKSTMT(node->right, symbols,layer);
+    }else{
+      cry_error(SENDER_SEMATIC, "no right expression", pos);
+      success=false;
+      break;
+    }
+    if(node->right->node_type!=NODE_IDENTIFIER){
+      // we only allow referring a variable;
+      cry_error(SENDER_SEMATIC, "trying to defer a non-variable value", pos);
+      success=false;
+      break;
+    }
+    if(node->right->value_type.main_type!=TYPE_POINTER){
+      cry_error(SENDER_SEMATIC, "trying to defer a non-pointer value or variable", pos);
+      success=false;
+      break;
+    }
+    // infer the type of the expression
+    node->value_type.pointer_level=node->value_type.pointer_level-1;
+    if(node->value_type.pointer_level==0){
+      // not a pointer anymore
+      node->value_type.main_type=node->right->value_type.minor_type;
+      node->value_type.main_type=TYPE_VOID; 
     }
     break;
   }
