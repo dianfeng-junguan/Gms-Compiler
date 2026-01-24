@@ -33,10 +33,54 @@ static char* format_operand(operand_t op,list_t* reg_table){
   }
   return op.value;
 }
-void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table){
+typedef struct {
+  char* var;
+  i64 offset;// rbp-based offset
+} var_stackoffset_t;
+/**
+ * @brief      alloc a stack mem area to the var.
+ *
+ * @details    .
+ *
+ * @param      
+ *
+ * @return     void
+ */
+void alloc_stk(list_t *var_stkoffs, char* var, i64 offset){
+  for (size_t i=0; i < var_stkoffs->len; ++i) {
+    var_stackoffset_t *p=list_get(var_stkoffs, i);
+    if(strcmp(p->var,var)==0){
+      // duplicate
+      cry_errorf(SENDER_ASMGEN, ((filepos_t){0,0}), "duplicate allocation of stack for var %s\n",var);
+      return;
+    }
+  }
+  append(var_stkoffs, &((var_stackoffset_t){.var=var,.offset=offset}));
+}
+void free_stk(list_t *var_stkoffs, char *var){
+  for (size_t i=0; i < var_stkoffs->len; ++i) {
+    var_stackoffset_t *p=list_get(var_stkoffs, i);
+    if(strcmp(p->var,var)==0){
+      list_remove(var_stkoffs, i);
+      return;
+    }
+  }
+}
+i64 get_stkoff(list_t *var_stkoffs, char* var){
+  for (size_t i=0; i < var_stkoffs->len; ++i) {
+    var_stackoffset_t *p=list_get(var_stkoffs, i);
+    if(strcmp(p->var,var)==0){
+      return p->offset;
+    }
+  }
+  cry_errorf(SENDER_ASMGEN, ((filepos_t){0}), "searching for a not-yet-alloced-stack var %s\n",var);
+  return -1;
+}
+void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table, platform_info_t arch, list_t *var_stkoffs){
   char* op1=format_operand(intercode->op1, reg_table);
   char* op2=format_operand(intercode->op2, reg_table);
   char* op3=format_operand(intercode->op3, reg_table);
+  abi_t abi=get_abi(arch.abi);
   switch (intercode->type) {
   case CODE_DATA_SECTION:
     ASM("section .data\n");
@@ -62,12 +106,18 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
   case CODE_DEF_FUNC: {
     ASM("global %s\n",op1);
     ASM("%s:\n",op1);
-    ASM("push rbp\nmov rbp,rsp\n");    
+    ASM("push rbp\nmov rbp,rsp\n");
+    for (size_t  i=0; i<abi.callee_saved_regs_num; i++) {
+      ASM("push %s\n",abi.callee_saved_regs[i]);
+    }
     break;
   }
   case CODE_RETURN: {
     if(op1){
       ASM("mov rax,%s\n",op1);
+    }
+    for (size_t i=0; i<abi.callee_saved_regs_num; i++) {
+      ASM("pop %s\n",abi.callee_saved_regs[abi.callee_saved_regs_num-1-i]);
     }
     ASM("mov rsp,rbp\npop rbp\nret\n");
     break;
@@ -83,7 +133,8 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
     ASM("sub rsp,%s\n",op2);
     size_t var_size=atoi(op2);
     *stack_subbase=*stack_subbase+var_size;
-    ASM("%%define %s qword [rbp-%zu]\n",op1,*stack_subbase);    
+    //alloc_stk(var_stkoffs, op1, -*stack_subbase);
+    ASM("%%define %s qword [rbp-%zu-%zu]\n",op1,8*abi.callee_saved_regs_num,*stack_subbase) ;    
     break;
   }
   case CODE_ALLOC_TMP: {
@@ -190,8 +241,6 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
   case CODE_FUNCCALL: {
     /* to pass args. we store the value of tmpvars into stack and then mov it to the registers before
      calling the func*/
-    /* TODO: auto select abi */
-    abi_t abi=get_abi(ABI_MICROSOFT);
     char* ret_reg=op2;
     // save used caller-saved regs but the reg used to store return value
     size_t pushed_regs_num=0;
@@ -245,10 +294,11 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
     snprintf(line, 64, fmt, ##__VA_ARGS__);	\
     list_append(codes, &line);			\
   } while (0);
-char* amd64_gen(list_t* intercodes){
+char* amd64_gen(list_t* intercodes,platform_info_t arch){
   list_t asm_codes=create_list(20, sizeof(char*));
   size_t stk=0;
   list_t reg_table=create_list(6, sizeof(reg_tmpvar_pair_t));
+  list_t var_stkoffs=create_list(6, sizeof(var_stackoffset_t));
   abi_t abi=get_abi(ABI_MICROSOFT);
   for (size_t i=0; i<abi.caller_saved_regs_num; i++) {
     list_append(&reg_table, create_regvar(abi.caller_saved_regs[i]));
@@ -258,7 +308,7 @@ char* amd64_gen(list_t* intercodes){
   ASMU(&asm_codes, "default rel\n");
   
   for (size_t i=0; i < intercodes->len; ++i) {
-   amd64_translate(&asm_codes, list_get(intercodes, i),&stk,&reg_table);    
+    amd64_translate(&asm_codes, list_get(intercodes, i),&stk,&reg_table,arch,&var_stkoffs);    
   }
   // now concat the codes
   size_t nowcapa=128;

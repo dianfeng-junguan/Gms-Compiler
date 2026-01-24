@@ -1,6 +1,8 @@
 #ifndef _UTILS_H
 #define _UTILS_H
 #include <stddef.h>
+typedef unsigned long long u64;
+typedef long long i64;
 typedef struct _filepos_t {
   size_t line;
   size_t column;

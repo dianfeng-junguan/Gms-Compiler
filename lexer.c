@@ -26,11 +26,34 @@ bool string_after(char *str, list_t *tokens, filepos_t pos) {
   token_t tok = create_token(CONSTANT_STRING, str, pos);
   list_append(tokens, &tok);
   return true;
+
+}
+bool char_begin(char c) { return c == '\''; }
+static bool met_singlequote = false;
+bool char_allowed(char c, char *scanned, size_t offset) {
+  if (c == '\'' && !met_singlequote) {
+    met_singlequote = true;
+    return true;
+  }
+  if (met_singlequote) {
+    met_singlequote = false;
+    return false;
+  }
+  return c != '\'';
+}
+bool char_after(char *str, list_t *tokens, filepos_t pos) {
+  if(strlen(str)>3){
+    // two quote and a character (not considering \n etc for now)
+    return false;
+  }
+  token_t tok = create_token(CONSTANT_CHAR, str, pos);
+  list_append(tokens, &tok);
+  return true;
 }
 
 bool number_begin(char c) { return isdigit(c); }
 bool number_allowed(char c, char *scanned, size_t offset) {
-  return 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F' || isdigit(c) ||
+  return ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F') || isdigit(c) ||
          c == 'x' || c == 'X' || c == 'h' || c == 'H';
 }
 bool number_after(char *str, list_t *tokens, filepos_t pos) {
@@ -192,7 +215,7 @@ bool operator_after(char *str, list_t *tokens, filepos_t pos) {
 }
 
 bool separator_begin(char c) {
-  return c == ';' || c == ':' || c == '\'' || c == '{' || c == '}' ||
+  return c == ';' || c == ':' || c == '{' || c == '}' ||
          c == '(' || c == ')' || c == ',';
 }
 bool separator_allowed(char c, char *start, size_t offset) {
@@ -200,12 +223,12 @@ bool separator_allowed(char c, char *start, size_t offset) {
     // we want single-char separator
     return false;
   }
-  return c == ';' || c == ':' || c == '\'' || c == '{' || c == '}' ||
+  return c == ';' || c == ':' || c == '{' || c == '}' ||
          c == '(' || c == ')' || c == ',';
 }
 static str_sep_pair_t separators[] = {
-    {";", SEMICOLON},  {":", COLON},     {"\'", QUOTE},     {"{", OPENBRACE},
-    {"}", CLOSEBRACE}, {"(", OPENPAREN}, {")", CLOSEPAREN}, {",", COMMA}};
+    {";", SEMICOLON}, {":", COLON},      {"{", OPENBRACE}, {"}", CLOSEBRACE},
+    {"(", OPENPAREN}, {")", CLOSEPAREN}, {",", COMMA}};
 bool separator_after(char *str, list_t *tokens, filepos_t pos) {
   // separator is easy.
   for (size_t i = 0; i < sizeof(separators) / sizeof(str_sep_pair_t); ++i) {
@@ -220,6 +243,7 @@ bool separator_after(char *str, list_t *tokens, filepos_t pos) {
 lex_recipe_t scan_recipe[] = {
     {number_begin, number_allowed, number_after}, // costant: number,
     {string_begin, string_allowed, string_after}, // costant: string,
+    {char_begin, char_allowed, char_after}, // costant: char,
     {word_begin, word_allowed, word_after},       // id and keywords,
     {whitespace_begin, whitespace_allowed, whitespace_after}, // whitespace,
     {operator_begin, operator_allowed, operator_after},       // operator,
@@ -357,6 +381,7 @@ static char *mappings[] = {
     [IDENTIFIER] = "IDENTIFIER",
     [CONSTANT_NUMBER] = "CONSTANT_NUMBER",
     [CONSTANT_STRING] = "CONSTANT_STRING",
+    [CONSTANT_CHAR] = "CONSTANT_CHAR",
     [TOKEN_VALUE] = "TOKEN_VALUE",
     [TOKEN_ID] = "TOKEN_ID",
     [TOKEN_TYPEKW] = "TOKEN_TYPEKW",

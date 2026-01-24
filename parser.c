@@ -140,21 +140,38 @@ astnode_t *prefix_handler_id(token_t *lefttoken, list_t *tokens, size_t *iter) {
 astnode_t* prefix_handler_const(token_t *lefttoken, list_t *tokens, size_t* iter){
   // LOG(VERBOSE, "%s ",lefttoken->value);
   (*iter)++;
-  astnode_t *node = create_node(NODE_CONSTANT, NULL, NULL, clone_str(lefttoken->value),
-                                lefttoken->position);
+  symbol_type_t node_value_type=TYPE_VOID;
+  char* value=lefttoken->value;
   switch (lefttoken->token_type) {
   case CONSTANT_NUMBER: {
-    node->value_type=TYPE_INT;
+    node_value_type=TYPE_INT;
+    value=clone_str(lefttoken->value);
     break;
   }
   case CONSTANT_STRING: {
-    node->value_type=TYPE_STRING;
+    node_value_type=TYPE_STRING;
+    value=clone_str(lefttoken->value);
+    break;
+  }
+  case CONSTANT_CHAR:{
+    node_value_type=TYPE_INT;
+    // convert to int
+    char* charv=lefttoken->value;
+    // '(char)'
+    int character=charv[1];
+    value=myalloc(4);
+    itoa(character, value, 10);
+    
     break;
   }
   default:
-    node->value_type=TYPE_VOID;
+    node_value_type=TYPE_VOID;
     break;
   }
+  
+  astnode_t *node = create_node(NODE_CONSTANT, NULL, NULL, value,
+                                lefttoken->position);
+  node->value_type=node_value_type;
   return node;
 }
 astnode_t* handler_addsub(astnode_type_t type,astnode_t* lhs, astnode_t* rhs){  
@@ -276,6 +293,7 @@ prefix_handler_t prefix_handlers[50] = {
     [IDENTIFIER] = prefix_handler_id,
     [CONSTANT_NUMBER] = prefix_handler_const,
     [CONSTANT_STRING] = prefix_handler_const,
+    [CONSTANT_CHAR] = prefix_handler_const,
     // operators
     [ADD] = prefix_handler_add,
     [SUB] = prefix_handler_minus,

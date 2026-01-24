@@ -130,10 +130,14 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     symbol_t extsym=create_symbol(node->left->value, SYMBOL_VARIABLE, TYPE_INT, layer);
     extsym.is_extern=true;
     // for func declaration we need to scan the arglist
+    init_list(&node->syms, 10, sizeof(symbol_t));
+    list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
     if(node->node_type==NODE_DECLARE_FUNC){
       init_list(&extsym.args, 6, sizeof(symbol_type_t));
       current_func_arglist=&extsym.args;
-      if(!check_statement(node->right, symbols, layer)){
+      // use the node's symbol tab to prevent the arg variable
+      // leaked into outer scope
+      if(!check_statement(node->right, &node->syms, layer)){
 	success=false;
       }
       current_func_arglist=NULL;
@@ -373,8 +377,15 @@ bool check_statement(astnode_t* node, list_t* symbols, int layer){
     }
     break;
   }
+  case NODE_SINGLEEXPR:{
+    if(node->left)
+      CHKSTMT(node->left, symbols, layer);
+    if(node->right) 
+      CHKSTMT(node->right, symbols, layer);
+    break;
+  }
 default:
-  cry_error(SENDER_SEMATIC, "met unsupported node type", pos);
+  cry_errorf(SENDER_SEMATIC, pos, "met unsupported node type %s", get_nodetype_str(node->node_type));
   break;
   }
   return success;

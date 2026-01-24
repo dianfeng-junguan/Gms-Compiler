@@ -10,11 +10,6 @@ bool is_reg_used(list_t *regs,char* regname);
 void free_reg(list_t *regs, char *varname);
 void free_reg_str_pair(reg_tmpvar_pair_t *p);
 reg_tmpvar_pair_t* create_regvar(char* reg);
-#ifdef _AMD64
-char *amd64_gen(list_t *intercodes);
-#else
-char *aarch64_gen(list_t *intercodes);
-#endif
 typedef enum { ABI_SYSTEMV, ABI_MICROSOFT } abitype_t;
 
 typedef struct {
@@ -26,6 +21,22 @@ typedef struct {
   char* callee_saved_regs[12];
   size_t callee_saved_regs_num;
   char ret_reg[10];
-}abi_t;
+} abi_t;
+typedef enum{
+  ARCH_AMD64,
+  ARCH_AARCH64
+}arch_t;
+/**
+   informations about target platform.
+ **/
+typedef struct {
+  arch_t architecture;
+  abitype_t abi;
+}platform_info_t;
 abi_t get_abi(abitype_t abi);
 char* get_reg(list_t *regs,char* varname);
+#ifdef _AMD64
+char *amd64_gen(list_t *intercodes,platform_info_t arch);
+#else
+char *aarch64_gen(list_t *intercodes, platform_info_t arch);
+#endif

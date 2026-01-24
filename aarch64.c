@@ -55,7 +55,7 @@ static char* format_operand(operand_t op,list_t* reg_table){
   }
   return op.value;
 }
-void aarch64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table){
+void aarch64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table, platform_info_t arch){
   char* op1=format_operand(intercode->op1, reg_table);
   char* op2=format_operand(intercode->op2, reg_table);
   char* op3=format_operand(intercode->op3, reg_table);
@@ -255,7 +255,7 @@ void aarch64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_s
     list_append(codes, &line);			\
   } while (0);
   
-char* aarch64_gen(list_t* intercodes){
+char* aarch64_gen(list_t* intercodes,platform_info_t arch){
   list_t asm_codes=create_list(20, sizeof(char*));
   size_t stk=0;
   list_t reg_table=create_list(8, sizeof(reg_tmpvar_pair_t));
@@ -271,7 +271,7 @@ char* aarch64_gen(list_t* intercodes){
   ASMU(&asm_codes, ".arch arm64\n");
   
   for (size_t i=0; i < intercodes->len; ++i) {
-    aarch64_translate(&asm_codes, list_get(intercodes, i),&stk,&reg_table);    
+    aarch64_translate(&asm_codes, list_get(intercodes, i),&stk,&reg_table,arch);    
   }
   // now concat the codes
   size_t nowcapa=128;

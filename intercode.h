@@ -55,7 +55,7 @@ typedef enum {
   CODE_DATA_SECTION,
   CODE_TEXT_SECTION,
 } intercode_type_t;
-typedef unsigned long long u64;
+
 typedef enum{
   OPERAND_EMPTY=0,
   OPERAND_IMMEDIATE,
