@@ -9,18 +9,18 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-void copy_symbol(symbol_t* old, symbol_t* newt){
-  newt->name=clone_str(old->name);
-}
-bool is_symtab_dup(list_t* syms, char* name){
-  for (size_t i=0; i < syms->len; ++i) {
-    symbol_t* sym=list_get(syms, i);
-    if(strcmp(sym->name, name)==0){
-      return true;
-    }
-  }
-  return false;
-}
+
+/***********************************************************/
+/* the checker should decide whether to check the subnodes */
+/***********************************************************/
+
+size_t while_depth = 0;
+symbol_type_t function_rettype = {TYPE_VOID, TYPE_VOID,0};
+bool in_function = false;
+list_t *current_func_arglist = NULL;
+bool check_node(astnode_t* node,list_t* symbols, int layer);
+bool check_arglist(astnode_t* commalist, list_t* symbols, list_t* arglist, size_t index, filepos_t pos, int layer);
+
 /**
    reminder: name must lives longer than the symbol!!!
  **/
@@ -34,35 +34,333 @@ symbol_t create_symbol(char* name, symbol_kind_t type, symbol_type_t value_type,
     .is_extern=false
   };
 }
-size_t while_depth = 0;
-symbol_type_t function_rettype = {TYPE_VOID, TYPE_VOID,0};
-bool in_function = false;
-list_t *current_func_arglist = NULL;
+void copy_symbol(symbol_t* old, symbol_t* newt){
+  newt->name=clone_str(old->name);
+}
+void free_symbol(symbol_t* sym){
+  FREEIFD(sym->name, myfree);
+  sym->name=NULL;
+  FREEIFD(sym, myfree);
+}
 
-#define CHK(expr, errmsg, pos)				\
-    if(!(expr)){					\
-      cry_error(SENDER_SEMATIC, errmsg, pos);		\
-      success=false;					\
-      break;						\
-    }
-#define CHKSTMT(node, symbols, layer)                                          \
-  if (!check_statement(node, symbols, layer)) {                                \
-    success = false;                                                           \
-    break;                                                                     \
+bool sym_redef_trigger(astnode_t *node) {
+  switch (node->node_type) {
+  case NODE_DEFINITION: 
+  case NODE_DECLARE_FUNC:
+  case NODE_DECLARE_VAR:
+  case NODE_FUNCTION:
+  case NODE_ARGPAIR:
+    return true;
+  default:
+    return false;
   }
+}
+bool sym_redef_checker(astnode_t *node, list_t *symbols, int layer) {
+  // NODE_DEFINITION  NODE_DECLARE_FUNC  NODE_DECLARE_VAR  NODE_FUNCTION
+  // the nodes above all store the identifier at their left subnode
+  char *name = node->left->value;
+  if(node->node_type==NODE_FUNCTION||node->node_type==NODE_DECLARE_FUNC){
+    name = node->left->left->value;    
+  }
+  if(is_symtab_dup(&node->syms, name)){
+    cry_errorf(SENDER_SEMATIC, node->position, "variable redefined or redeclared:%s",
+               node->left->value);
+    return false;
+  }
+  if(node->node_type==NODE_FUNCTION){
+    // for NODE_FUNCTION, we need to init the symbol table
+    init_list(&node->syms, symbols->capacity, sizeof(symbol_t));
+    list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
+  }
+  // ok. add it to the symtab.
+  symbol_t defedsym=create_symbol(name, SYMBOL_VARIABLE, (symbol_type_t){TYPE_INT, TYPE_VOID}, layer);
+  defedsym.is_extern=true;
+  // for func declaration we need to scan the arglist  
+  if(node->node_type==NODE_DECLARE_FUNC||node->node_type==NODE_FUNCTION){
+    init_list(&defedsym.args, 6, sizeof(symbol_type_t));
+    defedsym.type=SYMBOL_FUNCTION;
+    if(node->node_type==NODE_FUNCTION){
+      node->value_type = node->left->right->value_type;
+    }
+    current_func_arglist = &defedsym.args;
+    in_function=true;
+    function_rettype=node->value_type;
+    // use the node's symbol tab to prevent the arg variable from leaking into
+    // outer scope
+    // check the arglist
+    if (!check_node(node->node_type == NODE_DECLARE_FUNC ? node->right
+                                                         : node->right->left,
+                    &node->syms, layer)) {
+      /*func node:
+        -holder       -holder
+         -id -rettype  -args -body
+        func decl node:
+         -holder        -args
+	  -id -rettype
+      */
+      return false;
+    }
+    current_func_arglist = NULL;
+    function_rettype=(symbol_type_t){TYPE_VOID,TYPE_VOID};
+    in_function=false;
+  }
+  if(node->node_type==NODE_ARGPAIR){
+    symbol_t sym=create_symbol(node->left->value, SYMBOL_VARIABLE, node->right->value_type, layer);
+    // add it to the function symbol arglist
+    // argtype is small enough so we use list_t element to store it directly (though it's void*)
+    if(!current_func_arglist){
+      cry_error(SENDER_SEMATIC, "function arglist not in a function",
+                node->position);      
+      return false;
+    }
+    append(current_func_arglist, &node->right->value_type);
+    // ok. add it to the symtab.
+    list_append(symbols, &sym);
+  }else{
+    list_append(symbols, &defedsym);
+  }
+  // for function and definition we need to check the body or right expr
+  if (node->node_type == NODE_FUNCTION) {
+    in_function=true;
+    function_rettype=node->value_type;
+    bool suc = check_node(node->right->right, symbols, layer);
+    in_function = false;
+    function_rettype=(symbol_type_t){TYPE_VOID,TYPE_VOID};
+    if(!suc)return false;
+  }else if(node->node_type==NODE_DEFINITION){
+    return check_node(node->right,symbols, layer);
+  }
+  return true;
+}
+bool sym_undef_trigger(astnode_t *node) {
+  return node->node_type==NODE_IDENTIFIER;
+}
+bool sym_undef_checker(astnode_t *node, list_t *symbols, int layer) {
+  for (size_t i=0; i < symbols->len; ++i) {
+    symbol_t* sym=list_get(symbols, i);
+    assert(node->value);
+    if(strcmp(node->value, sym->name)==0){
+      // found
+      LOG(VERBOSE, "identifier found defined symbol %s, type %d,%d\n",
+          node->value, sym->sym_type.main_type, sym->sym_type.minor_type);
+      // update the value type of the node      
+      node->value_type=sym->sym_type;
+      return true;
+    }
+  }
+  cry_errorf(SENDER_SEMATIC, node->position, "undefined variable:%s\n", node->value);
+  return false;
+}
+bool incontype_trigger(astnode_t *node) {
+  switch (node->node_type) {
+  case NODE_ADD:case NODE_SUB: 
+  case NODE_MUL:case NODE_DIV:
+  case NODE_MOD:case NODE_AND:
+  case NODE_OR:case NODE_BITAND:
+  case NODE_BITOR:case NODE_XOR:
+  case NODE_ASSIGN:case NODE_EQUAL:
+  case NODE_GREATER:case NODE_LESS:
+  case NODE_GREATER_EQUAL:case NODE_LESS_EQUAL:
+    return true;
+  default:
+    return false;
+    break;
+  }
+}
+bool incontype_checker(astnode_t *node, list_t *symbols, int layer) {
+  // infer the type of the expression
+  if (!check_node(node->left, symbols, layer) ||
+      !check_node(node->right, symbols, layer)) {
+    return false;
+  }
+  if(symtypcmp(node->left->value_type,node->right->value_type)!=0){
+    cry_error(SENDER_SEMATIC, "left expression type and right expression type are not the same", node->position);
+    return false;
+  }
+  // infer
+  node->value_type = node->left->value_type;
+  return true;
+}
+bool funccall_arg_trigger(astnode_t *node){
+  return node->node_type==NODE_FUNCCALL;
+}
+bool funccall_arg_checker(astnode_t *node, list_t *symbols, int layer) {
+  // check left node first
+  if(!check_node(node->left, symbols, layer)){
+    return false;
+  }
+  // check args passed on the right  
+  for (size_t i=0; i < symbols->len; ++i) {
+    symbol_t *sym=list_get(symbols, i);
+    if(strcmp(node->left->value, sym->name)==0){
+      // infer the type
+      node->value_type=sym->return_type;
+      // check the args
+      if (!check_arglist(node->right, symbols, &sym->args, 0,
+                         node->position, layer)) {
+	cry_errorf(SENDER_SEMATIC, node->position, "wrong argument type");
+	return false;
+      }
+    }
+  }
+  return true;
+}
+bool return_trigger(astnode_t *node) {
+  return node->node_type==NODE_RETURN;
+}
+bool return_checker(astnode_t *node, list_t *symbols, int layer) {
+  // check if in function
+  if(!in_function){
+    cry_error(SENDER_SEMATIC, "return not in function", node->position);
+    return false;
+  }  
+  // check right expr
+  symbol_type_t rett={TYPE_VOID,TYPE_VOID};
+  if(node->left){
+    if(check_node(node->left, symbols, layer))
+      rett = node->left->value_type;
+    else
+      return false;
+  }
+  // check whether the return type meets the function type
+  if(symtypcmp(function_rettype,rett)<0){
+    cry_errorf(SENDER_SEMATIC, node->position, "return type does not meet the function type");
+    return false;
+  }
+  return true;
+}
+bool refer_trigger(astnode_t *node) {
+  return node->node_type==NODE_REFER;
+}
+bool refer_checker(astnode_t *node, list_t *symbols, int layer) {
+  if (!node->right || !check_node(node->right, symbols, layer)) {
+    cry_error(SENDER_SEMATIC, "invalid right expression", node->position);    
+    return false;
+  }
+  if(node->right->node_type!=NODE_IDENTIFIER){
+    // we only allow referring a variable
+    cry_error(SENDER_SEMATIC, "trying to refer a non-variable value", node->position);
+    return false;
+  }
+  // infer the type of the expression
+  node->value_type.pointer_level=node->right->value_type.pointer_level+1;
+  if(node->value_type.pointer_level==1){
+    // start to be a pointer
+    node->value_type.minor_type=node->right->value_type.main_type;
+    node->value_type.main_type=TYPE_POINTER;
+  }
+  return true;  
+}
 
-bool check_statement(astnode_t *node, list_t *symbols, int layer);
+bool defer_trigger(astnode_t *node){return node->node_type==NODE_DEFER;}
+bool defer_checker(astnode_t *node,list_t* symbols, int layer) {  
+  if (!node->right || !check_node(node->right, symbols, layer)) {
+    cry_error(SENDER_SEMATIC, "invalid right expression", node->position);    
+    return false;
+  }
+  if(node->right->node_type!=NODE_IDENTIFIER){
+    // we only allow referring a variable
+    cry_error(SENDER_SEMATIC, "trying to refer a non-variable value", node->position);
+    return false;
+  }
+  if(node->right->value_type.main_type!=TYPE_POINTER){
+    cry_error(SENDER_SEMATIC, "trying to defer a non-pointer value or variable",
+              node->position);
+    return false;
+  }
+  // infer the type of the expression
+  node->value_type.pointer_level=node->value_type.pointer_level-1;
+  if(node->value_type.pointer_level==0){
+    // not a pointer anymore
+    node->value_type.main_type=node->right->value_type.minor_type;
+    node->value_type.main_type=TYPE_VOID;
+  }
+  return true;  
+}
+bool break_trigger(astnode_t *node){return node->node_type==NODE_RETURN;}
+bool break_checker(astnode_t *node, list_t *symbols, int layer) {
+  if(while_depth==0){
+    cry_error(SENDER_SEMATIC, "found break not in while", node->position);
+    return false;
+  }
+  return true;;  
+}
+
+bool condition_block_trigger(astnode_t *node){
+  switch (node->node_type) {
+  case NODE_IF: 
+  case NODE_ELSEIF: 
+  case NODE_ELSE: 
+  case NODE_WHILE: 
+    return true;
+  default:
+    return false;
+  }
+}
+bool condition_block_checker(astnode_t *node, list_t *symbols, int layer) {
+  // the body of the if is a scope
+  init_list(&node->syms, 10, sizeof(symbol_t));
+  list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
+  // check body
+  if(node->left)
+    check_node(node->left, &node->syms, layer);
+  else{
+    cry_error(SENDER_SEMATIC, "no statment body", node->position);
+    return false;
+  }
+  return true;  
+}
+
+bool otherschk_trigger(astnode_t *node){return true;}
+bool otherschk_checker(astnode_t* node ,list_t *symbols, int layer) {
+  return (node->left?check_node(node->left, symbols, layer):true)&&
+    (node->right?check_node(node->right, symbols, layer):true);
+}
+static rule_t sematic_rules[] = {
+  {.name="symbol redefinition",.trigger=sym_redef_trigger,.checker=sym_redef_checker},
+  {.name="undefined symbol",.trigger=sym_undef_trigger,.checker=sym_undef_checker},
+  {.name="consistent left and right value type",.trigger=incontype_trigger,.checker=incontype_checker},
+  {.name="funccall argcheck",.trigger=funccall_arg_trigger,.checker=funccall_arg_checker},
+  {.name="return check",.trigger=return_trigger,.checker=return_checker},
+  {.name="refer check",.trigger=refer_trigger,.checker=refer_checker},
+  {.name="defer check",.trigger=defer_trigger,.checker=defer_checker},
+  {.name="break in while",.trigger=break_trigger,.checker=break_checker},
+  {.name="scope symbol copier",.trigger=condition_block_trigger,.checker=condition_block_checker},
+  {.name="others",.trigger=otherschk_trigger,.checker=otherschk_checker},
+};
+bool check_node(astnode_t *node, list_t *symbols, int layer) {
+  for (size_t i=0; i < sizeof(sematic_rules)/sizeof(rule_t); ++i) {
+    rule_t* r=&sematic_rules[i];
+    if (r->trigger(node)) {
+      LOG(VERBOSE, "checking node %s with %s\n", get_nodetype_str(node->node_type), r->name);
+      if(!r->checker(node,symbols, layer)){
+	return false;
+      }
+      break;      
+    }
+  }
+  return true;  
+}
+bool is_symtab_dup(list_t* syms, char* name){
+  for (size_t i=0; i < syms->len; ++i) {
+    symbol_t* sym=list_get(syms, i);
+    if(strcmp(sym->name, name)==0){
+      return true;
+    }
+  }
+  return false;
+}
 /*
   check the type of passed arguments.
  */
-bool check_arglist(astnode_t* commalist, list_t* symbols, int layer, list_t* arglist, size_t index, filepos_t pos){
+bool check_arglist(astnode_t* commalist, list_t* symbols, list_t* arglist, size_t index, filepos_t pos, int layer){
   if(commalist->node_type==NODE_COMMALIST){
     // commalist. check subnodes
     if(commalist->left){
-      if(!check_arglist(commalist->left, symbols, layer, arglist, index, pos))return false;
+      if(!check_arglist(commalist->left, symbols, arglist, index, pos, layer))return false;
     }
     if(commalist->right){
-      if(!check_arglist(commalist->right, symbols, layer, arglist, index+1, pos))return false;
+      if(!check_arglist(commalist->right, symbols, arglist, index+1, pos, layer))return false;
     }
     return true;
   }
@@ -71,7 +369,7 @@ bool check_arglist(astnode_t* commalist, list_t* symbols, int layer, list_t* arg
     return false;
   }
   // an expr, check its value type
-  if(!check_statement(commalist, symbols, layer)){
+  if(!check_node(commalist, symbols, layer)){
     return false;
   }
   symbol_type_t passedtype=commalist->value_type;
@@ -85,383 +383,8 @@ bool check_arglist(astnode_t* commalist, list_t* symbols, int layer, list_t* arg
   return true;
   
 }
-bool check_statement(astnode_t* node, list_t* symbols, int layer){
-  bool success=true;
-  filepos_t pos=node->position;
-  node->layer=layer;
-  switch (node->node_type) {    
-  case NODE_CONSTANT:{
-    // 
-    break;
-  } 
-  case NODE_IDENTIFIER: {
-    // if undefined
-    bool f=false;
-    for (size_t i=0; i < symbols->len; ++i) {
-      symbol_t* sym=list_get(symbols, i);
-      assert(node->value);
-      if(strcmp(node->value, sym->name)==0){
-	// found
-	LOG(VERBOSE, "identifier found defined symbol %s, type %d,%d\n", node->value, sym->sym_type.main_type,sym->sym_type.minor_type);
-	node->value_type=sym->sym_type;
-	f=true;
-      }
-    }
-    if(!f){
-      // undefined
-      cry_errorf(SENDER_SEMATIC, pos, "undefined variable:%s\n", node->value);
-      success=false;
-    }        
-    break;
-  }
-    
-  case NODE_DECLARE_VAR: 
-  case NODE_DECLARE_FUNC: {
-    // check redefinition
-    assert(node->left);    
-    if(node->left->node_type!=NODE_IDENTIFIER){
-      cry_error(SENDER_SEMATIC, "expected identifier", pos);
-      success=false;
-      break;
-    }
-    if(is_symtab_dup(&node->syms, node->left->value)){
-      cry_error(SENDER_SEMATIC, "variable redeclaration", pos);
-      success=false;
-      break;
-    }
-    // ok. add it to the symtab.
-    /* TODO: make extern declare include type info */
-    symbol_t extsym=create_symbol(node->left->value, SYMBOL_VARIABLE, (symbol_type_t){TYPE_INT, TYPE_VOID}, layer);
-    extsym.is_extern=true;
-    // for func declaration we need to scan the arglist
-    init_list(&node->syms, 10, sizeof(symbol_t));
-    list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
-    if(node->node_type==NODE_DECLARE_FUNC){
-      init_list(&extsym.args, 6, sizeof(symbol_type_t));
-      current_func_arglist=&extsym.args;
-      // use the node's symbol tab to prevent the arg variable
-      // leaked into outer scope
-      if(!check_statement(node->right, &node->syms, layer)){
-	success=false;
-      }
-      current_func_arglist=NULL;
-      if(!success)break;
-    }
-    list_append(symbols, &extsym);
-    break;
-  }
-  case NODE_DEFINITION: {
-    // check redefinition
-    assert(node->left);
-    assert(node->right);
-    if(node->left->node_type!=NODE_IDENTIFIER){
-      cry_error(SENDER_SEMATIC, "expected identifier at the left hand side of =", pos);
-      success=false;
-      break;
-    }
-    if(is_symtab_dup(&node->syms, node->left->value)){
-      cry_error(SENDER_SEMATIC, "variable redefinition", pos);
-      success=false;
-      break;
-    }
-    // check rhs
-    if(!check_statement(node->right, symbols, layer)){
-      success=false;
-      break;
-    }
-    // ok. add it to the symtab.
-    // if there is no type explicitly written, we infer the type
-    symbol_type_t inferred=node->left->value_type;
-    if(node->left->value_type.main_type==TYPE_VOID){
-      inferred=node->right->value_type;
-    }else if(symtypcmp(node->right->value_type,node->left->value_type)!=0){
-      // check if the expr conforms to the type comment
-      cry_errorf(SENDER_SEMATIC, pos, "expected type %d, found type %d\n",node->left->value_type.main_type,node->right->value_type.main_type);
-      success=false;
-      break;
-    }
-    LOG(VERBOSE, "defining %s of type %d, %d\n",node->left->value, inferred.main_type,inferred.minor_type);
-    symbol_t sym=create_symbol(node->left->value, SYMBOL_VARIABLE, inferred, layer);
-    list_append(symbols, &sym);
-    break;
-  }
-  case NODE_FUNCTION: {
-    // check redefinition
-    assert(node->left);
-    assert(node->right);
-    if(node->left->node_type!=NODE_IDENTIFIER){
-      cry_error(SENDER_SEMATIC, "expected identifier at the name of function", pos);
-    }
-    if(is_symtab_dup(symbols, node->left->value)){
-      cry_error(SENDER_SEMATIC, "function name redefinition", pos);
-    }
-    
-    symbol_t func_sym=create_symbol(node->left->value, SYMBOL_FUNCTION, node->value_type, layer);
-    // init the function scope symtab first: inherit the parent symtab.
-    init_list(&node->syms, symbols->capacity, symbols->element_size);
-    list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
-    // set the arglist
-    init_list(&func_sym.args, 6, sizeof(symbol_type_t));
-    current_func_arglist=&func_sym.args;
-    // set the vars for return checking
-    in_function=true;
-    function_rettype=node->value_type;
-    if(node->right){
-      check_statement(node->right, &node->syms, layer+1);
-    }
-    function_rettype=(symbol_type_t){TYPE_VOID,TYPE_VOID};
-    in_function=false;
-    
-    current_func_arglist=NULL;
-    // ok. add the function to the symtab.
-    list_append(symbols, &func_sym);
-    break;
-  }
-  case NODE_LEAFHOLDER:
-  case NODE_ARGLIST:{
-    // directly check the subnodes.
-    if(node->left){
-      check_statement(node->left, symbols,layer);
-    }
-    if(node->right){
-      check_statement(node->right, symbols,layer);
-    }
-    break;
-  }
-  case NODE_ARGPAIR: {
-    // a pair of arg. left name, right type.
-    // check redefinition
-    assert(node->left);
-    assert(node->right);
-    if(node->left->node_type!=NODE_IDENTIFIER){
-      cry_error(SENDER_SEMATIC, "expected identifier at the name of function", pos);
-      success=false;
-      break;
-    }
-    if(is_symtab_dup(symbols, node->left->value)){
-      cry_error(SENDER_SEMATIC, "variable redefinition", pos);
-      success=false;
-      break;
-    }
-    symbol_t sym=create_symbol(node->left->value, SYMBOL_FUNCTION, node->right->value_type, layer);
-    // add it to the function symbol arglist
-    // argtype is small enough so we use list_t element to store it directly (though it's void*)
-    if(!current_func_arglist){
-      cry_error(SENDER_SEMATIC, "function arglist not in a function", pos);
-      success=false;
-      break;
-    }
-    append(current_func_arglist, &node->right->value_type);
-    // ok. add it to the symtab.
-    list_append(symbols, &sym);
-    break;
-  }
-    
-  case NODE_ELSEIF:
-  case NODE_IF: 
-    // check condition expr
-    if(!node->left||!check_statement(node->left, symbols, layer)){
-      cry_error(SENDER_SEMATIC, "no condition expression", pos);
-    }
-    // the body of the if is a scope
-    init_list(&node->syms, 10, sizeof(symbol_t));
-    list_copy(&node->syms, symbols,(copy_callback)copy_symbol);
-    // check body
-    if(node->right)
-      check_statement(node->right, &node->syms,layer+1);
-    else{
-      cry_error(SENDER_SEMATIC, "no if body", pos);
-    }
-    break;
-  case NODE_ELSE: {
-    // the body of the if is a scope
-    init_list(&node->syms, 10, sizeof(symbol_t));
-    list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
-    // check body
-    if(node->left)
-      check_statement(node->left, &node->syms,layer+1);
-    else{
-      cry_error(SENDER_SEMATIC, "no else body", pos);
-    }
-    break;
-  }
-  case NODE_WHILE: {
-    // check condition
-    if(node->left){
-      if(!check_statement(node->left, symbols, layer)){
-	cry_error(SENDER_SEMATIC, "invalid while: invalid condition", node->left->position);
-      }
-    }else{
-      cry_error(SENDER_SEMATIC, "invalid while: no condition", pos);
-    }
-    // the body of the if is a scope
-    init_list(&node->syms, 10, sizeof(symbol_t));
-    list_copy(&node->syms, symbols, (copy_callback)copy_symbol);
-    // check body
-    while_depth++;
-    if(node->right)
-      check_statement(node->right, &node->syms,layer+1);
-    while_depth--;
-    break;
-  }
-  case NODE_RETURN: {
-    // check if in function
-    if(!in_function){
-      cry_error(SENDER_SEMATIC, "return not in function", pos);
-      success=false;
-      break;
-    }
-    // check right expr
-    symbol_type_t rett={TYPE_VOID,TYPE_VOID};
-    if(node->left){
-      check_statement(node->left, symbols,layer);
-      rett=node->left->value_type;
-      success=false;
-      break;
-    }
-    // check whether the return type meets the function type
-    if(symtypcmp(function_rettype,rett)==0){
-      cry_errorf(SENDER_SEMATIC, pos, "return type does not meet the function type");
-      success=false;
-      break;
-    }
-    // its ok if there is no return expr
-    break;
-  }
-      
-      
-  case NODE_FUNCCALL:{
-    // need to check arglist type 
-    CHKSTMT(node->left, symbols, layer);
-    char* symname=node->left->value;
-    for (size_t i=0; i < symbols->len; ++i) {
-      symbol_t *sym=list_get(symbols, i);
-      if(strcmp(symname, sym->name)==0){
-	// infer the type
-	node->value_type=sym->return_type;
-	// check the args
-	CHK(check_arglist(node->right, symbols, layer, &sym->args, 0, pos), "wrong argument", pos);
-      }
-    }
-    CHKSTMT(node->right, symbols, layer);
-    break;
-  }
-    // two-operand operators
-  case NODE_ADD:case NODE_SUB:case NODE_MUL:case NODE_DIV:case NODE_MOD:
-  case NODE_BITAND:case NODE_BITOR:case NODE_AND:case NODE_OR:case NODE_COMMALIST:
-  case NODE_EQUAL:case NODE_GREATER:case NODE_LESS:case NODE_GREATER_EQUAL:case NODE_LESS_EQUAL:  
-  case NODE_ASSIGN:
-  {
-    // check left and right
-    // TODO: check the result of check_statement
-    if(node->left){
-      CHKSTMT(node->left, symbols, layer);
-    }else{
-      cry_error(SENDER_SEMATIC, "no left expression", pos);
-      success=false;
-      break;
-    }
-    if(node->right){
-      CHKSTMT(node->right, symbols,layer);
-    }else{
-      cry_error(SENDER_SEMATIC, "no right expression", pos);
-      success=false;
-      break;
-    }
-    // infer the type of the expression
-    if(symtypcmp(node->left->value_type,node->right->value_type)!=0){
-      cry_error(SENDER_SEMATIC, "left expression type and right expression type are not the same", pos);
-      success=false;
-      break;
-    }
-    // infer
-    node->value_type=node->left->value_type;
-    break;
-  }
-  case NODE_REFER:{
-    if(node->right){
-      CHKSTMT(node->right, symbols,layer);
-    }else{
-      cry_error(SENDER_SEMATIC, "no right expression", pos);
-      success=false;
-      break;
-    }
-    if(node->right->node_type!=NODE_IDENTIFIER){
-      // we only allow referring a variable;
-      cry_error(SENDER_SEMATIC, "trying to refer a non-variable value", pos);
-      success=false;
-      break;
-    }
-    // infer the type of the expression
-    node->value_type.pointer_level=node->right->value_type.pointer_level+1;
-    if(node->value_type.pointer_level==1){
-      // start to be a pointer
-      node->value_type.minor_type=node->right->value_type.main_type;
-      node->value_type.main_type=TYPE_POINTER; 
-    }
-    break;
-  }
-  case NODE_BREAK: {
-    if(while_depth==0){
-      cry_error(SENDER_SEMATIC, "found break not in while", pos);
-    }
-    break;
-  }
-  case NODE_DEFER:{
-    if(node->right){
-      CHKSTMT(node->right, symbols,layer);
-    }else{
-      cry_error(SENDER_SEMATIC, "no right expression", pos);
-      success=false;
-      break;
-    }
-    if(node->right->node_type!=NODE_IDENTIFIER){
-      // we only allow referring a variable;
-      cry_error(SENDER_SEMATIC, "trying to defer a non-variable value", pos);
-      success=false;
-      break;
-    }
-    if(node->right->value_type.main_type!=TYPE_POINTER){
-      cry_error(SENDER_SEMATIC, "trying to defer a non-pointer value or variable", pos);
-      success=false;
-      break;
-    }
-    // infer the type of the expression
-    node->value_type.pointer_level=node->value_type.pointer_level-1;
-    if(node->value_type.pointer_level==0){
-      // not a pointer anymore
-      node->value_type.main_type=node->right->value_type.minor_type;
-      node->value_type.main_type=TYPE_VOID; 
-    }
-    break;
-  }
-  case NODE_SINGLEEXPR:{
-    if(node->left)
-      CHKSTMT(node->left, symbols, layer);
-    if(node->right) 
-      CHKSTMT(node->right, symbols, layer);
-    break;
-  }
-default:
-  cry_errorf(SENDER_SEMATIC, pos, "met unsupported node type %s", get_nodetype_str(node->node_type));
-  break;
-  }
-  return success;
-}
-void free_symbol(symbol_t* sym){
-  FREEIFD(sym->name, myfree);
-  sym->name=NULL;
-  FREEIFD(sym, myfree);
-}
 bool do_sematic(astnode_t* ast){
   // init the symbol table
   init_list(&ast->syms, 10, sizeof(symbol_t));
-  // check every statement
-  bool success=true;
-  if(ast->left)
-    success=check_statement(ast->left, &ast->syms, 0);
-  if(!success)return false;
-  if(ast->right)
-    success=check_statement(ast->right, &ast->syms, 0);
-  return success;
+  return check_node(ast, &ast->syms,0);
 }

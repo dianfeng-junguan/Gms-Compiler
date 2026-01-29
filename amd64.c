@@ -305,7 +305,7 @@ char* amd64_gen(list_t* intercodes,platform_info_t arch){
   size_t stk=0;
   list_t reg_table=create_list(6, sizeof(reg_tmpvar_pair_t));
   list_t var_stkoffs=create_list(6, sizeof(var_stackoffset_t));
-  abi_t abi=get_abi(ABI_MICROSOFT);
+  abi_t abi=get_abi(arch.abi);
   for (size_t i=0; i<abi.caller_saved_regs_num; i++) {
     list_append(&reg_table, create_regvar(abi.caller_saved_regs[i]));
   }

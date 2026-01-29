@@ -108,8 +108,8 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   // reminder: each node should generate at most one temp var.
   switch (node->node_type) {
   case NODE_FUNCTION: {
-    assert(node->left&&(node->left->node_type==NODE_IDENTIFIER)&&node->left->value);
-    char* funcname=node->left->value;
+    assert(node->left&&(node->left->left->node_type==NODE_IDENTIFIER)&&node->left->left->value);
+    char* funcname=node->left->left->value;
     // first declare the func
     CODE(code_list, CODE_DEF_FUNC,KEEP(funcname),EMPTY,EMPTY);
     // then assign the symbols
@@ -239,11 +239,15 @@ char *gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   }
     
   case NODE_DECLARE_VAR: {
-  case NODE_DECLARE_FUNC: {
-    assert(node->left);
-    CODE(code_list, CODE_EXTERN_DECLARE, KEEP(node->left->value), EMPTY, EMPTY);
-    break;
-  }
+    case NODE_DECLARE_FUNC: {
+      assert(node->left);
+      char *name = node->left->value;
+      if(node->node_type==NODE_DECLARE_FUNC){
+	name=node->left->left->value;
+      }
+      CODE(code_list, CODE_EXTERN_DECLARE, KEEP(name), EMPTY, EMPTY);
+      break;
+    }
   }
     
 
@@ -412,7 +416,9 @@ list_t gen_intercode(astnode_t* ast){
   CODE(&codes, CODE_DEF_FUNC, ADDR("_start"), EMPTY, EMPTY);  
   // scan the ast and find global definitions
   put_global_var_inits(&codes, ast);
-  CODE(&codes, CODE_FUNCCALL, ADDR("main"), EMPTY, EMPTY);
+  char *tmpv = make_tmpvar(0);
+  CODE(&codes, CODE_ALLOC_TMP, TMP(tmpv), EMPTY, EMPTY);
+  CODE(&codes, CODE_FUNCCALL, ADDR("main"), TMP(tmpv), EMPTY);
   CODE(&codes, CODE_RETURN, EMPTY, EMPTY, EMPTY);
   gen_node(ast, &codes,0,0);
   return codes;

@@ -441,7 +441,7 @@ astnode_t* recipe_value(list_t* tokens, size_t* iter, tokentype_t recipe[], size
  */
 astnode_t *recipe_typekw(list_t *tokens, size_t *iter, tokentype_t recipe[], size_t recipe_len) {
   token_t* tok=list_get(tokens, *iter);
-  symbol_type_t kwtype;
+  symbol_type_t kwtype={0};
   switch (tok->token_type) {
   case STRING:
     kwtype.main_type = TYPE_STRING;
@@ -722,9 +722,10 @@ astnode_t* parse_function(list_t *collected, list_t *tokens, size_t *iter, filep
   astnode_t *retkw = *(astnode_t**)list_get(collected, 2);
   astnode_t *body = *(astnode_t**)list_get(collected, 3);
   // we need an extra leafholder to hold the rest two nodes together.
-  astnode_t *two_holder = create_node(NODE_LEAFHOLDER, args, body, NULL, pos);
+  astnode_t *right_holder = create_node(NODE_LEAFHOLDER, args, body, NULL, pos);
+  astnode_t *left_holder = create_node(NODE_LEAFHOLDER, id, retkw, NULL, pos);
   astnode_t *funcnode =
-      create_node(NODE_FUNCTION, id, two_holder, NULL, pos);
+      create_node(NODE_FUNCTION, left_holder, right_holder, NULL, pos);
   funcnode->value_type = retkw->value_type;
   return funcnode;
 }
@@ -739,8 +740,9 @@ astnode_t* parse_ext_vardecl(list_t *collected, list_t *tokens, size_t *iter, fi
      extern let id:type;
   */
   astnode_t* idnode=*(astnode_t**)list_get(collected, 0);
+  astnode_t* typekwnode=*(astnode_t**)list_get(collected, 1);
   astnode_t* declare_node =
-    create_node(NODE_DECLARE_VAR, idnode, NULL, NULL, idnode->position);
+    create_node(NODE_DECLARE_VAR, idnode, typekwnode, NULL, idnode->position);
   return declare_node;
 }
 astnode_t* parse_ext_funcdecl(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
@@ -749,7 +751,9 @@ astnode_t* parse_ext_funcdecl(list_t *collected, list_t *tokens, size_t *iter, f
   */
   astnode_t* idnode=*(astnode_t**)list_get(collected, 0);
   astnode_t* arglistnode=*(astnode_t**)list_get(collected, 1);
-  astnode_t* declare_node = create_node(NODE_DECLARE_FUNC, idnode, arglistnode, NULL,
+  astnode_t *rettypenode = *(astnode_t **)list_get(collected, 2);
+  astnode_t* holder=create_node(NODE_LEAFHOLDER, idnode, rettypenode, NULL, idnode->position);
+  astnode_t* declare_node = create_node(NODE_DECLARE_FUNC, holder, arglistnode, NULL,
 					idnode->position);
   return declare_node;
 }

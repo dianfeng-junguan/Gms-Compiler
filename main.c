@@ -125,7 +125,7 @@ int main(int argc, char** argv){
 #endif
   astnode_t *asttree=do_parse(&tokens);
   
-  if(!asttree||!do_sematic(asttree)){
+  if(!asttree||!(do_sematic(asttree))){
     return -1;
   }
   
