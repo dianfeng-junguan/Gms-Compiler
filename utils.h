@@ -1,6 +1,8 @@
 #ifndef _UTILS_H
 #define _UTILS_H
 #include <stddef.h>
+typedef unsigned long long u64;
+typedef long long i64;
 typedef struct _filepos_t {
   size_t line;
   size_t column;
@@ -41,7 +43,7 @@ typedef void (*copy_callback)(void* old, void* newt);
    this will directly overwrite the dest list, so store the value before doing this.
  **/
 void list_copy(list_t* dest, list_t* src, copy_callback callback);
-
+void list_concat(list_t* dest,list_t* src);
 void free_list(list_t* list);
 void free_list_shallow(list_t *list);
 typedef void (*list_ele_dtor)(void *element);

@@ -5,6 +5,7 @@ typedef enum {
   // we put other subnodes under a new leafholder which is under the real
   // parent.
   NODE_LEAFHOLDER,
+  NODE_SINGLEEXPR,
   // values
   NODE_CONSTANT,
   NODE_IDENTIFIER,
@@ -29,6 +30,8 @@ typedef enum {
   NODE_MUL,
   NODE_DIV,
   NODE_MOD,
+  NODE_REFER,
+  NODE_DEFER,
   NODE_BITAND,
   NODE_BITOR,
   NODE_XOR,
@@ -54,10 +57,20 @@ typedef enum {
 } astnode_type_t;
 
 typedef enum {
-  TYPE_VOID=0,
+  TYPE_VOID = 0,
   TYPE_INT,
   TYPE_STRING,
-}symbol_type_t;
+  TYPE_POINTER, // not allowed in minor type
+} symbol_single_type_t;
+typedef struct {
+  symbol_single_type_t main_type;
+  // if the main type is pointer, it points to a var of minor type
+  symbol_single_type_t minor_type;
+  // e.g. 2-level pointer int** 
+  int pointer_level;
+} symbol_type_t;
+int symtypcmp(symbol_type_t a, symbol_type_t b);
+
 typedef struct _astnode_t{
   astnode_type_t node_type;
   struct _astnode_t* left;
@@ -81,6 +94,7 @@ typedef struct{
   char* name;
   /// this indicates whether it is a variable or function
   symbol_kind_t type;
+  
   union{
     symbol_type_t sym_type;
     symbol_type_t return_type;

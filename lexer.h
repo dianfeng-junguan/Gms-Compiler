@@ -56,6 +56,7 @@ typedef enum {
   IDENTIFIER,
   CONSTANT_NUMBER,
   CONSTANT_STRING,
+  CONSTANT_CHAR,
   // below are types used in parser and are not allow to used in lexer.
   TOKEN_VALUE,
   TOKEN_ID,

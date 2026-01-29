@@ -15,6 +15,7 @@ static char *nodetype_str_map[NODETYPE_MAP_MAX] = {
     // we put other subnodes under a new leafholder which is under the real
     // parent.
     [NODE_LEAFHOLDER] = "NODE_LEAFHOLDER",
+    [NODE_SINGLEEXPR] = "NODE_SINGLEEXPR",
     // values
     [NODE_CONSTANT] = "NODE_CONSTANT",
     [NODE_IDENTIFIER] = "NODE_IDENTIFIER",
@@ -40,6 +41,8 @@ static char *nodetype_str_map[NODETYPE_MAP_MAX] = {
     [NODE_MUL] = "NODE_MUL",
     [NODE_DIV] = "NODE_DIV",
     [NODE_MOD] = "NODE_MOD",
+    [NODE_REFER] = "NODE_REFER",
+    [NODE_DEFER] = "NODE_DEFER",
     [NODE_BITAND] = "NODE_BITAND",
     [NODE_BITOR] = "NODE_BITOR",
     [NODE_XOR] = "NODE_XOR",
@@ -100,7 +103,7 @@ astnode_t *create_node(astnode_type_t type, astnode_t *left, astnode_t *right,
   
   node->syms=create_list(0, sizeof(symbol_t));
   node->position = position;
-  node->value_type = TYPE_VOID;
+  node->value_type = (symbol_type_t){TYPE_VOID,TYPE_VOID,0};
   node->layer = 0;
   return node;  
 }
@@ -139,41 +142,63 @@ astnode_t *prefix_handler_id(token_t *lefttoken, list_t *tokens, size_t *iter) {
 astnode_t* prefix_handler_const(token_t *lefttoken, list_t *tokens, size_t* iter){
   // LOG(VERBOSE, "%s ",lefttoken->value);
   (*iter)++;
-  astnode_t *node = create_node(NODE_CONSTANT, NULL, NULL, clone_str(lefttoken->value),
-                                lefttoken->position);
+  symbol_type_t node_value_type={TYPE_VOID,TYPE_VOID};
+  char* value=lefttoken->value;
   switch (lefttoken->token_type) {
   case CONSTANT_NUMBER: {
-    node->value_type=TYPE_INT;
+    node_value_type=(symbol_type_t){TYPE_INT, TYPE_VOID};
+    value=clone_str(lefttoken->value);
     break;
   }
   case CONSTANT_STRING: {
-    node->value_type=TYPE_STRING;
+    node_value_type=(symbol_type_t){TYPE_STRING, TYPE_VOID};
+    value=clone_str(lefttoken->value);
+    break;
+  }
+  case CONSTANT_CHAR:{
+    node_value_type=(symbol_type_t){TYPE_INT, TYPE_VOID};
+    // convert to int
+    char* charv=lefttoken->value;
+    // '(char)'
+    int character=charv[1];
+    value=myalloc(4);
+    sprintf(value, "%d", character);
+    
     break;
   }
   default:
-    node->value_type=TYPE_VOID;
+    node_value_type=(symbol_type_t){TYPE_VOID, TYPE_VOID};
     break;
   }
+  
+  astnode_t *node = create_node(NODE_CONSTANT, NULL, NULL, value,
+                                lefttoken->position);
+  node->value_type=node_value_type;
   return node;
 }
-astnode_t* handler_addsub(astnode_type_t type,astnode_t* lhs, astnode_t* rhs){  
-  astnode_t* zero=create_node(NODE_CONSTANT, NULL, NULL, "0", lhs->position);  
-  return create_node(type, lhs?lhs:zero, rhs, NULL, lhs->position);
+astnode_t* handler_addsub(astnode_type_t type,astnode_t* lhs, astnode_t* rhs){
+  filepos_t pos=lhs?lhs->position:rhs->position;
+  astnode_t* zero=create_node(NODE_CONSTANT, NULL, NULL, "0", pos);  
+  return create_node(type, lhs?lhs:zero, rhs, NULL, pos);
 }
-astnode_t *prefix_handler_add(token_t *lefttoken, list_t *tokens, size_t* iter) {
-  astnode_t *left = create_node(
-      lefttoken->token_type == IDENTIFIER ? NODE_IDENTIFIER : NODE_CONSTANT,
-      NULL, NULL, clone_str(lefttoken->value), lefttoken->position);
-  (*iter)++;  
-  return handler_addsub(NODE_ADD, NULL, left);
-}
-astnode_t* prefix_handler_minus(token_t *lefttoken, list_t *tokens, size_t* iter){
-  astnode_t *left = create_node(
-      lefttoken->token_type == IDENTIFIER ? NODE_IDENTIFIER : NODE_CONSTANT,
-      NULL, NULL, clone_str(lefttoken->value), lefttoken->position);
-  (*iter)++;  
-  return handler_addsub(NODE_SUB, NULL, left);
-}
+#define PREFIX_SINGOP(funcname_noprefix, nodetype_noprefix)                    \
+  astnode_t *prefix_handler_##funcname_noprefix(                               \
+      token_t *lefttoken, list_t *tokens, size_t *iter) {                      \
+    token_t *righttoken = list_get(tokens, *iter + 1);                          \
+    if (!righttoken)                                                           \
+      return NULL;                                                             \
+    astnode_t *left = create_node(                                             \
+        righttoken->token_type == IDENTIFIER ? NODE_IDENTIFIER                 \
+                                             : NODE_CONSTANT,                  \
+        NULL, NULL, clone_str(righttoken->value), righttoken->position);       \
+    (*iter)+=2;                                                                 \
+    return handler_addsub(NODE_##nodetype_noprefix, NULL, left);               \
+  }
+PREFIX_SINGOP(add, ADD);
+PREFIX_SINGOP(sub, SUB);
+PREFIX_SINGOP(refer, REFER);
+PREFIX_SINGOP(defer, DEFER);
+
 astnode_t *prefix_handler_openparen(token_t *lefttoken, list_t *tokens,
                                     size_t *iter) {
   size_t backupiter=*iter+1;
@@ -190,7 +215,7 @@ int precedences[] = {
     [ADD] = 120,        [SUB] = 120,        [MUL] = 130,
     [DIV] = 130,        [MOD] = 130,        [EQUAL] = 110,
     [GREATER] = 110,    [LESS] = 110,       [GREATER_EQUAL] = 110,
-    [LESS_EQUAL] = 110,
+    [LESS_EQUAL] = 110, [BITAND] = 130,     [BITOR] = 130,
     [ASSIGN] = 105, // a=1, b=2=>2
     [COMMA] = 100,      [OPENPAREN] = 1000, [CLOSEPAREN] = 0,
     [SEMICOLON] = 0,    [OPENBRACE] = 0};
@@ -275,9 +300,12 @@ prefix_handler_t prefix_handlers[50] = {
     [IDENTIFIER] = prefix_handler_id,
     [CONSTANT_NUMBER] = prefix_handler_const,
     [CONSTANT_STRING] = prefix_handler_const,
+    [CONSTANT_CHAR] = prefix_handler_const,
     // operators
     [ADD] = prefix_handler_add,
-    [SUB] = prefix_handler_minus,
+    [SUB] = prefix_handler_sub,
+    [MUL] = prefix_handler_defer,
+    [BITAND] = prefix_handler_refer,
     [OPENPAREN] = prefix_handler_openparen,
     0
 };
@@ -374,31 +402,6 @@ astnode_t *parse_identifier(list_t *tokens, size_t *iter) {
 }
 
 
-/*
-  parse an type keyword from the tokens.
-  returns an typekw node.
- */
-astnode_t *parse_typekw(list_t *tokens, size_t *iter) {
-  token_t* tok=list_get(tokens, *iter);
-  symbol_type_t kwtype=TYPE_VOID;
-  switch (tok->token_type) {
-  case STRING:
-    kwtype = TYPE_STRING;
-    break;    
-  case INT: {
-    kwtype=TYPE_INT;
-    break;
-  }
-  default:
-    return NULL;
-    break;
-  }
-  astnode_t *id =
-      create_node(NODE_TYPEKW, NULL, NULL, tok->value, tok->position);
-  id->value_type = kwtype;
-  (*iter)++;
-  return id;
-}
 astnode_t* recipe_expr(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
   return parse_expr(tokens, iter, 0);
 }
@@ -407,15 +410,15 @@ astnode_t* recipe_value(list_t* tokens, size_t* iter, tokentype_t recipe[], size
   token_t *tok = list_get(tokens, *iter);
   if(tok&&(tok->token_type==IDENTIFIER||IS_CONST_TOK(tok))){
     // what we want
-    symbol_type_t value_type=TYPE_VOID;
+    symbol_type_t value_type={TYPE_VOID,TYPE_VOID};
     // constant
     switch (tok->token_type) {
     case CONSTANT_NUMBER: {
-      value_type=TYPE_INT;
+      value_type.main_type=TYPE_INT;
       break;
     }
     case CONSTANT_STRING: {
-      value_type=TYPE_STRING;
+      value_type.main_type=TYPE_STRING;
       break;
     }
     default:
@@ -431,29 +434,43 @@ astnode_t* recipe_value(list_t* tokens, size_t* iter, tokentype_t recipe[], size
   }
   return NULL;
 }
-astnode_t* recipe_typekw(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
-  token_t *tok=list_get(tokens, *iter);
-  if(tok&&(tok->token_type==INT||tok->token_type==STRING)){
-    // what we want
-    astnode_t *vnode =
-      create_node(NODE_TYPEKW, NULL, NULL, tok->value, tok->position);
-    switch (tok->token_type) {
-    case INT: {
-      vnode->value_type=TYPE_INT;
-      break;
-    }
-    case STRING: {
-      vnode->value_type=TYPE_STRING;
-      break;
-    }
-    default:
-      vnode->value_type=TYPE_VOID;
-      break;
-    }
-    (*iter)++;
-    return vnode;
+
+/*
+  parse an type keyword from the tokens.
+  returns an typekw node.
+ */
+astnode_t *recipe_typekw(list_t *tokens, size_t *iter, tokentype_t recipe[], size_t recipe_len) {
+  token_t* tok=list_get(tokens, *iter);
+  symbol_type_t kwtype={0};
+  switch (tok->token_type) {
+  case STRING:
+    kwtype.main_type = TYPE_STRING;
+    break;    
+  case INT: {
+    kwtype.main_type=TYPE_INT;
+    break;
   }
-  return NULL;
+  default:
+    return NULL;
+    break;
+  }
+  int ptrl=0;
+  (*iter)++;
+  // whether the next token is a *
+  while(peek_check_token(tokens, *iter, MUL)){
+    // pointer type
+    if(ptrl==0){
+      kwtype.minor_type=kwtype.main_type;
+      kwtype.main_type=TYPE_POINTER; 
+    }
+    ptrl++;
+    (*iter)++;
+  }
+  astnode_t *typenode =
+      create_node(NODE_TYPEKW, NULL, NULL, tok->value, tok->position);
+  kwtype.pointer_level=ptrl;
+  typenode->value_type = kwtype;
+  return typenode;
 }
 astnode_t* recipe_id(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
   // we want an id token.
@@ -503,7 +520,7 @@ astnode_t* recipe_arglist(list_t* tokens, size_t* iter, tokentype_t recipe[], si
   while (*iter<tokens->len) {
     token_t *tok=list_get(tokens, *iter);
     astnode_t *id = parse_identifier(tokens, iter);
-    astnode_t *argtype = parse_typekw(tokens, iter);
+    astnode_t *argtype = recipe_typekw(tokens, iter, recipe, recipe_len);
     if(id&&argtype){ 
       astnode_t *pair=create_node(NODE_ARGPAIR, id, argtype, NULL, tok->position);
       if(holder->left!=NULL){
@@ -590,6 +607,16 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
 }
 
 astnode_t *parse_definition(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos) {
+  astnode_t* id=*(astnode_t**)list_get(collected, 0);
+  astnode_t* typekw=*(astnode_t**)list_get(collected, 1);  
+  astnode_t* rexpr=*(astnode_t**)list_get(collected, 2);
+  id->value_type=typekw->value_type;
+  astnode_t *defnode =
+      create_node(NODE_DEFINITION, id, rexpr, NULL, pos);
+  return defnode;
+}
+
+astnode_t *parse_definition_notype(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos) {
   astnode_t* id=*(astnode_t**)list_get(collected, 0);  
   astnode_t* rexpr=*(astnode_t**)list_get(collected, 1);
   astnode_t *defnode =
@@ -695,18 +722,17 @@ astnode_t* parse_function(list_t *collected, list_t *tokens, size_t *iter, filep
   astnode_t *retkw = *(astnode_t**)list_get(collected, 2);
   astnode_t *body = *(astnode_t**)list_get(collected, 3);
   // we need an extra leafholder to hold the rest two nodes together.
-  astnode_t *two_holder = create_node(NODE_LEAFHOLDER, args, body, NULL, pos);
+  astnode_t *right_holder = create_node(NODE_LEAFHOLDER, args, body, NULL, pos);
+  astnode_t *left_holder = create_node(NODE_LEAFHOLDER, id, retkw, NULL, pos);
   astnode_t *funcnode =
-      create_node(NODE_FUNCTION, id, two_holder, NULL, pos);
+      create_node(NODE_FUNCTION, left_holder, right_holder, NULL, pos);
   funcnode->value_type = retkw->value_type;
   return funcnode;
 }
 astnode_t* parse_singleexpr(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
   astnode_t *expr = *(astnode_t**)list_get(collected, 0);
-  // we use leafholder here. it is ok beacuse the value of the expr will
-  // be evaled anyway and the desired operations will still be done (func call, assignments etc.)
   astnode_t *singleexprnode =
-      create_node(NODE_LEAFHOLDER, expr, NULL, NULL, pos);
+      create_node(NODE_SINGLEEXPR, expr, NULL, NULL, pos);
   return singleexprnode;
 }
 astnode_t* parse_ext_vardecl(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
@@ -714,8 +740,9 @@ astnode_t* parse_ext_vardecl(list_t *collected, list_t *tokens, size_t *iter, fi
      extern let id:type;
   */
   astnode_t* idnode=*(astnode_t**)list_get(collected, 0);
+  astnode_t* typekwnode=*(astnode_t**)list_get(collected, 1);
   astnode_t* declare_node =
-    create_node(NODE_DECLARE_VAR, idnode, NULL, NULL, idnode->position);
+    create_node(NODE_DECLARE_VAR, idnode, typekwnode, NULL, idnode->position);
   return declare_node;
 }
 astnode_t* parse_ext_funcdecl(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
@@ -724,7 +751,9 @@ astnode_t* parse_ext_funcdecl(list_t *collected, list_t *tokens, size_t *iter, f
   */
   astnode_t* idnode=*(astnode_t**)list_get(collected, 0);
   astnode_t* arglistnode=*(astnode_t**)list_get(collected, 1);
-  astnode_t* declare_node = create_node(NODE_DECLARE_FUNC, idnode, arglistnode, NULL,
+  astnode_t *rettypenode = *(astnode_t **)list_get(collected, 2);
+  astnode_t* holder=create_node(NODE_LEAFHOLDER, idnode, rettypenode, NULL, idnode->position);
+  astnode_t* declare_node = create_node(NODE_DECLARE_FUNC, holder, arglistnode, NULL,
 					idnode->position);
   return declare_node;
 }
@@ -740,7 +769,9 @@ typedef struct {
   astnode_t* (*builder)(list_t* collected, list_t* tokens, size_t* iter, filepos_t pos);
 } syntax_rule_t;
 #define ttt(name) static tokentype_t name[]
-ttt(pat_vardef) = {LET, TOKEN_ID, ASSIGN, TOKEN_EXPR,
+ttt(pat_vardef) = {LET, TOKEN_ID, COLON, TOKEN_TYPEKW, ASSIGN, TOKEN_EXPR,
+                                       SEMICOLON};
+ttt(pat_vardef_notype) = {LET, TOKEN_ID, ASSIGN, TOKEN_EXPR,
                                        SEMICOLON};
 ttt(pat_funcdef) = {
     FN,    TOKEN_ID,     OPENPAREN, TOKEN_ARGLIST,    CLOSEPAREN,
@@ -757,7 +788,8 @@ ttt(pat_return) = {RETURN, TOKEN_EXPR, SEMICOLON};
 ttt(pat_return_noexpr) = {RETURN, SEMICOLON};
 
 static syntax_rule_t syntaxes[] = {
-    {.name = "vardef", .recipe = pat_vardef,  .recipe_len= 5, .builder=parse_definition},
+    {.name = "vardef", .recipe = pat_vardef,  .recipe_len= 7, .builder=parse_definition},
+    {.name = "vardef_notype", .recipe = pat_vardef_notype,  .recipe_len= 5, .builder=parse_definition_notype},
     {.name = "funcdef", .recipe= pat_funcdef, .recipe_len= 10, .builder=parse_function},
     {.name = "ext_vardecl", .recipe= pat_ext_vardecl, .recipe_len= 6, .builder=parse_ext_vardecl},
     {.name = "ext_funcdecl", .recipe= pat_ext_funcdecl, .recipe_len= 9, .builder=parse_ext_funcdecl},
@@ -815,4 +847,10 @@ astnode_t* do_parse(list_t* tokens){
     }
   }
   return root;
+}
+int symtypcmp(symbol_type_t a, symbol_type_t b){
+  if(a.main_type==b.main_type && a.minor_type==b.minor_type){
+    return 0;
+  }
+  return -1;
 }

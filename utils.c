@@ -100,3 +100,8 @@ void myfree(char* str){
 void free_rest(){
   free_list(&alloced_mems);
 }
+void list_concat(list_t* dest,list_t* src){
+  for (size_t i=0; i<src->len; i++) {
+    append(dest, list_get(src, i));
+  }
+}
