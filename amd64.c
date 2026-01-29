@@ -2,7 +2,6 @@
 #include "err.h"
 #include "utils.h"
 #include <assert.h>
-#include <corecrt.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>

@@ -162,7 +162,7 @@ astnode_t* prefix_handler_const(token_t *lefttoken, list_t *tokens, size_t* iter
     // '(char)'
     int character=charv[1];
     value=myalloc(4);
-    itoa(character, value, 10);
+    sprintf(value, "%d", character);
     
     break;
   }

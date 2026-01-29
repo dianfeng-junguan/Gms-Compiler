@@ -5,7 +5,6 @@
 #include "parser.h"
 #include "sematic.h"
 #include <assert.h>
-#include <corecrt.h>
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
@@ -23,7 +22,7 @@ char* mklabel(){
     digits++;
   }
   char* number=malloc(digits+1);
-  itoa(labelid,number,10);
+  sprintf(number,"%d",labelid);
   char* lbl=malloc(5+digits+1);
   strcpy(lbl, "label");
   lbl = strcat(lbl, number);

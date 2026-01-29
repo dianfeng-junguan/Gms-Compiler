@@ -35,7 +35,7 @@ symbol_t create_symbol(char* name, symbol_kind_t type, symbol_type_t value_type,
   };
 }
 size_t while_depth = 0;
-symbol_type_t function_rettype = {TYPE_VOID, TYPE_VOID};
+symbol_type_t function_rettype = {TYPE_VOID, TYPE_VOID,0};
 bool in_function = false;
 list_t *current_func_arglist = NULL;
 

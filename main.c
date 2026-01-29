@@ -7,7 +7,6 @@
 #include "intercode2.h"
 #include "asmgen.h"
 #include "utils.h"
-#include <corecrt.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
