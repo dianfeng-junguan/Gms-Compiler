@@ -22,6 +22,7 @@ typedef enum {
   NODE_EXTERN,
   NODE_DECLARE_VAR,
   NODE_DECLARE_FUNC,
+  NODE_CLASS,
   // expressions
   NODE_COMMALIST,
   // operator
@@ -53,7 +54,8 @@ typedef enum {
   // others
   NODE_ARGLIST,
   NODE_ARGPAIR,
-  NODE_TYPEKW
+  NODE_TYPEKW,
+  NODE_CLASSMEMBER,
 } astnode_type_t;
 
 typedef enum {

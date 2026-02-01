@@ -121,9 +121,15 @@ typedef struct {
   tokentype_t tok;
 } str_tok_pair_t;
 str_tok_pair_t keywords[] = {
-    {"fn", FN},         {"if", IF},         {"else", ELSE},
-    {"while", WHILE},   {"return", RETURN}, {"let", LET},
-    {"extern", EXTERN}, {"break", BREAK},
+    {"fn", FN},
+    {"if", IF},
+    {"else", ELSE},
+    {"while", WHILE},
+    {"return", RETURN},
+    {"let", LET},
+    {"extern", EXTERN},
+    {"break", BREAK},
+    {"class", CLASS},
 
     {"int", INT},       {"string", STRING},
 };
@@ -390,6 +396,7 @@ static char *mappings[] = {
     [TOKEN_EXPR] = "TOKEN_EXPR",
     [TOKEN_STATEMENTS] = "TOKEN_STATEMENTS",
     [TOKEN_ARGLIST] = "TOKEN_ARGLIST",
+    [CLASS] = "CLASS",
 };
 char *tokentype_tostr(tokentype_t tt) { return mappings[tt]; }
 void free_token(token_t *tok) { FREEIFD(tok->value, myfree); }

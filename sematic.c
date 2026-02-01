@@ -50,6 +50,7 @@ bool sym_redef_trigger(astnode_t *node) {
   case NODE_DECLARE_VAR:
   case NODE_FUNCTION:
   case NODE_ARGPAIR:
+  case NODE_CLASS:
     return true;
   default:
     return false;
@@ -116,7 +117,8 @@ bool sym_redef_checker(astnode_t *node, list_t *symbols, int layer) {
     append(current_func_arglist, &node->right->value_type);
     // ok. add it to the symtab.
     list_append(symbols, &sym);
-  }else{
+  } else if (node->node_type != NODE_CLASS) {
+    // class definition is a bit special so we'll do it in another function    
     list_append(symbols, &defedsym);
   }
   // for function and definition we need to check the body or right expr

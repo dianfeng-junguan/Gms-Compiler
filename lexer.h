@@ -15,12 +15,13 @@ typedef enum {
   RETURN,
   EXTERN,
   BREAK,
+  CLASS,
   // type
   INT,
   STRING,
-  //whitespace
+  // whitespace
   WHITESPACE,
-  //separator
+  // separator
   COMMA,
   SEMICOLON,
   COLON,
@@ -30,7 +31,7 @@ typedef enum {
   CLOSEPAREN,
   OPENBRACE,
   CLOSEBRACE,
-  //operator
+  // operator
   ADD,
   SUB,
   MUL,
@@ -39,7 +40,7 @@ typedef enum {
   BITAND,
   BITOR,
   XOR,
-  //comparator
+  // comparator
   EQUAL,
   GREATER,
   LESS,
@@ -48,11 +49,11 @@ typedef enum {
   NOT_EQUAL,
   // action
   ASSIGN,
-  //logic
+  // logic
   AND,
   OR,
-  NOT,// this is also a bit operator
-  //values
+  NOT, // this is also a bit operator
+  // values
   IDENTIFIER,
   CONSTANT_NUMBER,
   CONSTANT_STRING,
@@ -64,6 +65,7 @@ typedef enum {
   TOKEN_EXPR,
   TOKEN_STATEMENTS,
   TOKEN_ARGLIST,
+  TOKEN_CLASS_MEMBERDEF,
 } tokentype_t;
 #define IS_CONST_TOK(tok) ((tok)->token_type==CONSTANT_NUMBER||(tok)->token_type==CONSTANT_STRING)      
 typedef struct {
