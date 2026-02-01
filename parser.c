@@ -29,10 +29,12 @@ static char *nodetype_str_map[NODETYPE_MAP_MAX] = {
 
     [NODE_FUNCTION] = "NODE_FUNCTION",
     [NODE_DEFINITION] = "NODE_DEFINITION",
+    [NODE_CLASS] = "NODE_CLASS",
 
     [NODE_EXTERN]="NODE_EXTERN",
     [NODE_DECLARE_VAR]="NODE_DECLARE_VAR",
     [NODE_DECLARE_FUNC]="NODE_DECLARE_FUNC",    
+    [NODE_CLASS]="NODE_CLASS",    
     // expressions
     [NODE_COMMALIST] = "NODE_COMMALIST",
     // operator
@@ -65,6 +67,7 @@ static char *nodetype_str_map[NODETYPE_MAP_MAX] = {
     [NODE_ARGLIST] = "NODE_ARGLIST",
     [NODE_ARGPAIR] = "NODE_ARGPAIR",
     [NODE_TYPEKW] = "NODE_TYPEKW",
+    [NODE_CLASSMEMBER] = "NODE_CLASSMEMBER",
     
 };
 char *get_nodetype_str(astnode_type_t type) {
@@ -550,6 +553,40 @@ astnode_t* recipe_arglist(list_t* tokens, size_t* iter, tokentype_t recipe[], si
   // it's ok even if it's empty
   return arglist;
 }
+
+astnode_t* recipe_class_member(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
+  // name type, name type,...
+  filepos_t emptypos={0,0};      
+  astnode_t *members = create_node(NODE_LEAFHOLDER, NULL, NULL, NULL, emptypos);
+  astnode_t* holder=members;
+  while (*iter<tokens->len) {
+    token_t *tok=list_get(tokens, *iter);
+    astnode_t *id = parse_identifier(tokens, iter);
+    astnode_t *memtype = recipe_typekw(tokens, iter, recipe, recipe_len);
+    if(id&&memtype){ 
+      astnode_t *pair=create_node(NODE_CLASSMEMBER, id, memtype, NULL, tok->position);
+      if(holder->left!=NULL){
+	// needs to create a leafholder
+	filepos_t emptypos={0,0};            
+	astnode_t* new_leafholder=create_node(NODE_LEAFHOLDER, NULL, NULL, NULL, emptypos);
+	holder->right=new_leafholder;
+	// move to the leafholder
+	holder=new_leafholder;
+      }
+      holder->left=pair;
+    } else {
+      if(id)free_node(id);
+      if(memtype)free_node(memtype);
+      LOG(VERBOSE, "parse_by_recipe.TOKEN_CLASS_MEMBER_DEF stopped");
+      break;
+    }
+    // skip the semicolon        
+    (*iter)++;
+  }
+  // it's ok even if it's empty
+  return members;
+}
+
 typedef struct{
   tokentype_t order;
   astnode_t* (*chef)(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len);
@@ -561,6 +598,7 @@ static recipe_t recipes[] = {
     {.order=TOKEN_TYPEKW, .chef=recipe_typekw},
     {.order=TOKEN_STATEMENTS, .chef=recipe_stmts},
     {.order=TOKEN_ARGLIST, .chef=recipe_arglist},
+    {.order=TOKEN_CLASS_MEMBERDEF, .chef=recipe_class_member},
 };
 // collect the tokens by the recipe. and if ordered expr, value or stmt, it
 // packs up tokens in the range into a node. 
@@ -710,7 +748,12 @@ astnode_t* parse_return(list_t *collected, list_t *tokens, size_t *iter, filepos
   
   return returnnode;
 }
-
+astnode_t* parse_class(list_t* collected, list_t* tokens, size_t *iter, filepos_t pos){
+  astnode_t* idnode=*(astnode_t**)list_get(collected, 0);
+  astnode_t *members = *(astnode_t **)list_get(collected, 1);
+  astnode_t *classnode = create_node(NODE_CLASS, idnode, members, NULL, pos);
+  return classnode;
+}
 astnode_t* parse_return_noexpr(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
   astnode_t *returnnode =
       create_node(NODE_RETURN, NULL, NULL, NULL, pos);
@@ -786,6 +829,8 @@ ttt(pat_while) = {WHILE, TOKEN_EXPR, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
 ttt(pat_break) = {BREAK, SEMICOLON};
 ttt(pat_return) = {RETURN, TOKEN_EXPR, SEMICOLON};
 ttt(pat_return_noexpr) = {RETURN, SEMICOLON};
+ttt(pat_class_def) = {CLASS, TOKEN_ID, OPENBRACE, TOKEN_CLASS_MEMBERDEF,
+                      CLOSEBRACE};
 
 static syntax_rule_t syntaxes[] = {
     {.name = "vardef", .recipe = pat_vardef,  .recipe_len= 7, .builder=parse_definition},
@@ -799,6 +844,7 @@ static syntax_rule_t syntaxes[] = {
     {.name = "break", .recipe= pat_break, .recipe_len= 2, .builder=parse_break},
     {.name = "return", .recipe= pat_return, .recipe_len= 3, .builder=parse_return},
     {.name = "return_noexpr", .recipe= pat_return_noexpr, .recipe_len= 2, .builder=parse_return},
+    {.name = "class_def", .recipe= pat_class_def, .recipe_len= 5, .builder=parse_class},
 };
 
 astnode_t *parse_statement(list_t *tokens, size_t *iter) {
@@ -823,7 +869,6 @@ astnode_t *parse_statement(list_t *tokens, size_t *iter) {
   }
   return NULL;
 }
-
 astnode_t* do_parse(list_t* tokens){
   size_t iter = 0;
   filepos_t emptypos={0,0};
