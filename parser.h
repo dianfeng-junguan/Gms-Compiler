@@ -36,6 +36,8 @@ typedef enum {
   NODE_BITAND,
   NODE_BITOR,
   NODE_XOR,
+  // visit property of object  
+  NODE_PROPERTY,
   // comparator
   NODE_EQUAL,
   NODE_GREATER,
@@ -54,8 +56,12 @@ typedef enum {
   // others
   NODE_ARGLIST,
   NODE_ARGPAIR,
+  NODE_KEYVALUE_PAIR,
   NODE_TYPEKW,
   NODE_CLASSMEMBER,
+  // filling the class fields  
+  NODE_CLASSFILL,
+  
 } astnode_type_t;
 
 typedef enum {
@@ -64,15 +70,44 @@ typedef enum {
   TYPE_STRING,
   TYPE_POINTER, // not allowed in minor type
 } symbol_single_type_t;
-typedef struct {
+typedef struct{
+  char *name;
+  symbol_type_index_t type;
+}name_type_pair_t;
+
+typedef struct {  
+  // name of this type  
+  char *name;
+  // memsize it takes up. class will add up the sizes of the members but the
+  // final size depends on the memory alignment chosen.  
+  size_t size;
+  union {
+    // if this is a class, it records the members
+    /*
+      item struct:
+      typedef struct{
+      char *name;
+      symbol_type_index_t type;
+      }name_type_pair_t;
+     */    
+    list_t members;
+    // if this is a function, it records the arguments    
+    list_t args;
+  };
+  // ====
   symbol_single_type_t main_type;
   // if the main type is pointer, it points to a var of minor type
   symbol_single_type_t minor_type;
-  // e.g. 2-level pointer int** 
+  // e.g. 2-level pointer int**
   int pointer_level;
+  // index of the type this type points to
+  // so the type will be point_to + pointer_level, i.e.
+  // point_to=int*, pointer_level=2, so the type will be char***.
+  // well but actually it will put all pointer levels to pointer_level
+  // to avoid any * in point_to.
+  int point_to;  
 } symbol_type_t;
-int symtypcmp(symbol_type_t a, symbol_type_t b);
-
+int symtypcmp(int a, int b);
 typedef struct _astnode_t{
   astnode_type_t node_type;
   struct _astnode_t* left;
@@ -86,7 +121,9 @@ typedef struct _astnode_t{
   // used to differentiate symbols defined at different depths of scopes.
   int layer;
   // used to indicate the type of constant or expression
-  symbol_type_t value_type;
+  int value_type;
+  // used to store constant type in NODE_CONSTANT
+  size_t extra_info;
 } astnode_t;
 typedef enum {
   SYMBOL_VARIABLE,
@@ -97,9 +134,10 @@ typedef struct{
   /// this indicates whether it is a variable or function
   symbol_kind_t type;
   
+  // index of type in the type table  
   union{
-    symbol_type_t sym_type;
-    symbol_type_t return_type;
+    int sym_type;
+    int return_type;
   };
   int layer;
   unsigned long long value;
@@ -114,3 +152,26 @@ char* get_nodetype_str(astnode_type_t type);
 void free_node(astnode_t *node);
 void free_symbol(symbol_t *sym);
 void free_all_nodes();
+//
+#define NODE_DEF_ID(node) (node->left->left)
+#define NODE_DEF_TYPEKW(node) (node->left->right)
+#define NODE_DEF_REXPR(node) (node->right)
+
+#define NODE_FUNC_ID(node) (node->left->left)
+#define NODE_FUNC_TYPEKW(node) (node->left->right)
+#define NODE_FUNC_ARGLIST(node) (node->right->left)
+#define NODE_FUNC_BODY(node) (node->right->right)
+
+#define NODE_VARDECL_ID(node) (node->left)
+#define NODE_VARDECL_TYPEKW(node) (node->right)
+
+#define NODE_FUNCDECL_ID(node) (node->left->left)
+#define NODE_FUNCDECL_TYPEKW(node) (node->left->right)
+#define NODE_FUNCDECL_ARGLIST(node) (node->right)
+
+#define NODE_CLASS_ID(node) (node->left)
+#define NODE_CLASS_MEMBERS(node) (node->right)
+
+#define NODE_ARGPAIR_ID(node) (node->left)
+#define NODE_ARGPAIR_TYPEKW(node) (node->right)
+

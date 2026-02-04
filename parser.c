@@ -68,6 +68,9 @@ static char *nodetype_str_map[NODETYPE_MAP_MAX] = {
     [NODE_ARGPAIR] = "NODE_ARGPAIR",
     [NODE_TYPEKW] = "NODE_TYPEKW",
     [NODE_CLASSMEMBER] = "NODE_CLASSMEMBER",
+    [NODE_CLASSFILL] = "NODE_CLASSFILL",
+    [NODE_KEYVALUE_PAIR] = "NODE_KEYVALUE_PAIR",
+    [NODE_PROPERTY] = "NODE_PROPERTY",
     
 };
 char *get_nodetype_str(astnode_type_t type) {
@@ -106,7 +109,7 @@ astnode_t *create_node(astnode_type_t type, astnode_t *left, astnode_t *right,
   
   node->syms=create_list(0, sizeof(symbol_t));
   node->position = position;
-  node->value_type = (symbol_type_t){TYPE_VOID,TYPE_VOID,0};
+  node->value_type = 0;
   node->layer = 0;
   return node;  
 }
@@ -173,10 +176,11 @@ astnode_t* prefix_handler_const(token_t *lefttoken, list_t *tokens, size_t* iter
     node_value_type=(symbol_type_t){TYPE_VOID, TYPE_VOID};
     break;
   }
-  
-  astnode_t *node = create_node(NODE_CONSTANT, NULL, NULL, value,
-                                lefttoken->position);
-  node->value_type=node_value_type;
+
+  astnode_t *node =
+      create_node(NODE_CONSTANT, NULL, NULL, value, lefttoken->position);
+  node->extra_info=lefttoken->token_type;
+  //node->value_type=node_value_type;
   return node;
 }
 astnode_t* handler_addsub(astnode_type_t type,astnode_t* lhs, astnode_t* rhs){
@@ -214,14 +218,25 @@ astnode_t *prefix_handler_openparen(token_t *lefttoken, list_t *tokens,
   cry_error(SENDER_PARSER, "missing closing parenthesis", lefttoken->position);
   return NULL;
 }
+
 int precedences[] = {
-    [ADD] = 120,        [SUB] = 120,        [MUL] = 130,
-    [DIV] = 130,        [MOD] = 130,        [EQUAL] = 110,
-    [GREATER] = 110,    [LESS] = 110,       [GREATER_EQUAL] = 110,
-    [LESS_EQUAL] = 110, [BITAND] = 130,     [BITOR] = 130,
-    [ASSIGN] = 105, // a=1, b=2=>2
+    [ADD] = 120,
+    [SUB] = 120,
+    [MUL] = 130,
+    [DIV] = 130,
+    [MOD] = 130,
+    [EQUAL] = 110,
+    [GREATER] = 110,
+    [LESS] = 110,
+    [GREATER_EQUAL] = 110,
+    [LESS_EQUAL] = 110,
+    [BITAND] = 130,
+    [BITOR] = 130,
+    [ASSIGN] = 105,
+    [COLON] = 110, // a=1, b=2=>2
+    [DOT] = 140,
     [COMMA] = 100,      [OPENPAREN] = 1000, [CLOSEPAREN] = 0,
-    [SEMICOLON] = 0,    [OPENBRACE] = 0};
+    [SEMICOLON] = 0,    [OPENBRACE] = 90};
 static astnode_type_t mapping[] = {
     [ADD] = NODE_ADD,
     [SUB] = NODE_SUB,
@@ -229,6 +244,8 @@ static astnode_type_t mapping[] = {
     [DIV] = NODE_DIV,
     [MOD] = NODE_MOD,
     [ASSIGN] = NODE_ASSIGN,
+    [COLON] = NODE_KEYVALUE_PAIR,
+    [DOT] = NODE_PROPERTY,
 
     [EQUAL] = NODE_EQUAL,
     [GREATER] = NODE_GREATER,
@@ -243,6 +260,7 @@ static astnode_type_t mapping[] = {
     [COMMA] = NODE_COMMALIST,
 
     [OPENPAREN] = NODE_FUNCCALL,
+    [OPENBRACE] = NODE_CLASSFILL,
 };
 
 astnode_t *infix_handler_twoop(tokentype_t optype, astnode_t *left,
@@ -269,6 +287,8 @@ INFIXHDLR_TWO(DIV);
 INFIXHDLR_TWO(MOD);
 INFIXHDLR_TWO(ASSIGN);
 INFIXHDLR_TWO(COMMA);
+INFIXHDLR_TWO(COLON);
+INFIXHDLR_TWO(DOT);
 
 INFIXHDLR_TWO(EQUAL);
 INFIXHDLR_TWO(GREATER);
@@ -299,6 +319,28 @@ astnode_t *infix_handler_OPENPAREN(astnode_t *left,
   (*iter)++;
   return create_node(mapping[OPENPAREN], left, right, NULL, left->position);
 }
+astnode_t *infix_handler_OPENBRACE(astnode_t *left, list_t *tokens,
+                                   size_t *iter) {
+  if(left->node_type!=NODE_IDENTIFIER){
+    return NULL;
+  }
+  // we need to parse arglist here rather than commalist
+  astnode_t *right = parse_expr(tokens, iter, 0);  
+  if(!right){
+    cry_error(SENDER_PARSER, "missing right expr",
+              get_last_token(tokens, *iter)->position);
+    return NULL;
+  }
+  // consume the close paren  
+  if(!peek_check_token(tokens, *iter, CLOSEBRACE)){
+    cry_error(SENDER_PARSER, "missing close paren",
+              get_last_token(tokens, *iter)->position);
+    return NULL;
+  }
+  (*iter)++;
+  return create_node(mapping[OPENBRACE], left, right, NULL, left->position);
+}
+
 prefix_handler_t prefix_handlers[50] = {
     [IDENTIFIER] = prefix_handler_id,
     [CONSTANT_NUMBER] = prefix_handler_const,
@@ -319,6 +361,8 @@ infix_handler_t infix_handlers[50] = {
     [DIV] = infix_handler_DIV,
     [ASSIGN] = infix_handler_ASSIGN,
     [MOD] = infix_handler_MOD,
+    [COLON] = infix_handler_COLON,
+    [DOT] = infix_handler_DOT,
     // compare
     [EQUAL] = infix_handler_EQUAL,
     [GREATER] = infix_handler_GREATER,
@@ -328,6 +372,8 @@ infix_handler_t infix_handlers[50] = {
     [NOT_EQUAL] = infix_handler_NOT_EQUAL,
     // funccall
     [OPENPAREN] = infix_handler_OPENPAREN,
+    // object def 
+    [OPENBRACE] = infix_handler_OPENBRACE,
 
     [COMMA] = infix_handler_COMMA,
     // logic
@@ -408,6 +454,20 @@ astnode_t *parse_identifier(list_t *tokens, size_t *iter) {
 astnode_t* recipe_expr(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
   return parse_expr(tokens, iter, 0);
 }
+/*
+  this function is used to implement object definition, since openbrace might
+  be mistaken as the beginning of object definition while it is the beginning
+  of if body.
+  i.e. classname{name:value}   v.s.   if 1==a {}
+  we rise the precedence at the beginning so the expression parsing in the
+  condition expression does not take {.
+  the side effect of it is objects cannot be defined directly in if condition.
+  a pair of parenthesis is needed if you want to do that.
+  i.e. if (classname{var:v})==a {}
+*/
+astnode_t* recipe_expr_cond(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
+  return parse_expr(tokens, iter, precedences[OPENBRACE]);
+}
 astnode_t* recipe_value(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
   // we want an id or const token.
   token_t *tok = list_get(tokens, *iter);
@@ -431,7 +491,8 @@ astnode_t* recipe_value(list_t* tokens, size_t* iter, tokentype_t recipe[], size
     astnode_t *vnode = create_node(
         tok->token_type == IDENTIFIER ? NODE_IDENTIFIER : NODE_CONSTANT, NULL,
         NULL, tok->value, tok->position);
-    vnode->value_type = value_type;
+    // vnode->value_type = value_type;
+    vnode->extra_info=tok->token_type;
     (*iter)++;
     return vnode;
   }
@@ -444,35 +505,9 @@ astnode_t* recipe_value(list_t* tokens, size_t* iter, tokentype_t recipe[], size
  */
 astnode_t *recipe_typekw(list_t *tokens, size_t *iter, tokentype_t recipe[], size_t recipe_len) {
   token_t* tok=list_get(tokens, *iter);
-  symbol_type_t kwtype={0};
-  switch (tok->token_type) {
-  case STRING:
-    kwtype.main_type = TYPE_STRING;
-    break;    
-  case INT: {
-    kwtype.main_type=TYPE_INT;
-    break;
-  }
-  default:
-    return NULL;
-    break;
-  }
-  int ptrl=0;
-  (*iter)++;
-  // whether the next token is a *
-  while(peek_check_token(tokens, *iter, MUL)){
-    // pointer type
-    if(ptrl==0){
-      kwtype.minor_type=kwtype.main_type;
-      kwtype.main_type=TYPE_POINTER; 
-    }
-    ptrl++;
-    (*iter)++;
-  }
   astnode_t *typenode =
       create_node(NODE_TYPEKW, NULL, NULL, tok->value, tok->position);
-  kwtype.pointer_level=ptrl;
-  typenode->value_type = kwtype;
+  (*iter)++;
   return typenode;
 }
 astnode_t* recipe_id(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
@@ -517,13 +552,14 @@ astnode_t* recipe_stmts(list_t* tokens, size_t* iter, tokentype_t recipe[], size
 }
 astnode_t* recipe_arglist(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
   // name type, name type,...
-  filepos_t emptypos={0,0};      
+  filepos_t emptypos = {0, 0};
+  size_t backupiter=*iter;
   astnode_t *arglist = create_node(NODE_ARGLIST, NULL, NULL, NULL, emptypos);
   astnode_t* holder=arglist;
-  while (*iter<tokens->len) {
-    token_t *tok=list_get(tokens, *iter);
-    astnode_t *id = parse_identifier(tokens, iter);
-    astnode_t *argtype = recipe_typekw(tokens, iter, recipe, recipe_len);
+  while (backupiter<tokens->len) {
+    token_t *tok=list_get(tokens, backupiter);
+    astnode_t *id = parse_identifier(tokens, &backupiter);
+    astnode_t *argtype = recipe_typekw(tokens, &backupiter, recipe, recipe_len);
     if(id&&argtype){ 
       astnode_t *pair=create_node(NODE_ARGPAIR, id, argtype, NULL, tok->position);
       if(holder->left!=NULL){
@@ -534,7 +570,7 @@ astnode_t* recipe_arglist(list_t* tokens, size_t* iter, tokentype_t recipe[], si
 	// move to the leafholder
 	holder=new_leafholder;
       }
-      holder->left=pair;
+      holder->left = pair;
     } else {
       if(id)free_node(id);
       if(argtype)free_node(argtype);
@@ -542,13 +578,16 @@ astnode_t* recipe_arglist(list_t* tokens, size_t* iter, tokentype_t recipe[], si
 	  "incomplete\n");
       break;
     }
+    *iter=backupiter;
     // check if we still have upcoming args
-    if(!peek_check_token(tokens, *iter, COMMA)){
+    if(!peek_check_token(tokens, backupiter, COMMA)){
       LOG(VERBOSE, "parse_by_recipe.TOKEN_ARGLIST stopped bc no comma\n");
+      LOG(VERBOSE, "*iter=%zu, backupiter=%zu\n", (*iter), backupiter);      
       break;
+    } else {
+      // skip the comma
+      backupiter++; 
     }
-    // skip the comma        
-    (*iter)++;
   }
   // it's ok even if it's empty
   return arglist;
@@ -556,13 +595,15 @@ astnode_t* recipe_arglist(list_t* tokens, size_t* iter, tokentype_t recipe[], si
 
 astnode_t* recipe_class_member(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
   // name type, name type,...
+  size_t backupiter=*iter;
   filepos_t emptypos={0,0};      
   astnode_t *members = create_node(NODE_LEAFHOLDER, NULL, NULL, NULL, emptypos);
   astnode_t* holder=members;
-  while (*iter<tokens->len) {
-    token_t *tok=list_get(tokens, *iter);
-    astnode_t *id = parse_identifier(tokens, iter);
-    astnode_t *memtype = recipe_typekw(tokens, iter, recipe, recipe_len);
+  while (backupiter<tokens->len) {
+    //LOG(VERBOSE, "%s iter=%zu\n", __FUNCTION__,*iter);
+    token_t *tok=list_get(tokens, backupiter);
+    astnode_t *id = parse_identifier(tokens, &backupiter);
+    astnode_t *memtype = recipe_typekw(tokens, &backupiter, recipe, recipe_len);
     if(id&&memtype){ 
       astnode_t *pair=create_node(NODE_CLASSMEMBER, id, memtype, NULL, tok->position);
       if(holder->left!=NULL){
@@ -576,13 +617,17 @@ astnode_t* recipe_class_member(list_t* tokens, size_t* iter, tokentype_t recipe[
       holder->left=pair;
     } else {
       if(id)free_node(id);
-      if(memtype)free_node(memtype);
-      LOG(VERBOSE, "parse_by_recipe.TOKEN_CLASS_MEMBER_DEF stopped");
-      break;
+      if (memtype)
+        free_node(memtype); 
+      LOG(VERBOSE, "parse_by_recipe.TOKEN_CLASS_MEMBER_DEF stopped\n");
+      LOG(VERBOSE, "iter=%zu,*iter=%s\n",*iter,tokentype_tostr(tok->token_type));      
+      return members;
     }
-    // skip the semicolon        
-    (*iter)++;
+    // skip the semicolon
+    backupiter++;
+    *iter=backupiter;    
   }
+  *iter=backupiter;
   // it's ok even if it's empty
   return members;
 }
@@ -593,6 +638,7 @@ typedef struct{
 } recipe_t;
 static recipe_t recipes[] = {
     {.order = TOKEN_EXPR, .chef = recipe_expr},
+    {.order = TOKEN_EXPR_COND, .chef = recipe_expr_cond},
     {.order=TOKEN_VALUE, .chef=recipe_value},
     {.order=TOKEN_ID, .chef=recipe_id},
     {.order=TOKEN_TYPEKW, .chef=recipe_typekw},
@@ -612,6 +658,9 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
       if(recipes[j].order==recipe[i]){
         processed = true;
         got = recipes[j].chef(tokens, &backupiter, recipe, recipe_len);
+
+	token_t* tok=list_get(tokens, backupiter);        
+	LOG(VERBOSE, "backupiter=%zu,type=%d,%s\n",backupiter,tok->token_type,tokentype_tostr(tok->token_type));
 	if(got){
           list_append(&collected, &got);
 	  break;
@@ -629,9 +678,10 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
       if(peek_check_token(tokens, backupiter, recipe[i])){
 	backupiter++;   
       }else{
-	// invalid token array
-	LOG(VERBOSE, "parse_by_recipe getting %s failed.\n",
-	    tokentype_tostr(recipe[i]));
+        // invalid token array
+        token_t *tokk = list_get(tokens, backupiter);
+	LOG(VERBOSE, "parse_by_recipe getting %s failed, met %s.\n",
+	    tokentype_tostr(recipe[i]),tokentype_tostr(tokk->token_type));
 	free_list(&collected);
 	return NULL;
       }
@@ -646,19 +696,21 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
 
 astnode_t *parse_definition(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos) {
   astnode_t* id=*(astnode_t**)list_get(collected, 0);
-  astnode_t* typekw=*(astnode_t**)list_get(collected, 1);  
-  astnode_t* rexpr=*(astnode_t**)list_get(collected, 2);
+  astnode_t* typekw=*(astnode_t**)list_get(collected, 1);
+  astnode_t *rexpr = *(astnode_t **)list_get(collected, 2);
+  astnode_t* holder=create_node(NODE_LEAFHOLDER, id, typekw, NULL, id->position);
   id->value_type=typekw->value_type;
   astnode_t *defnode =
-      create_node(NODE_DEFINITION, id, rexpr, NULL, pos);
+      create_node(NODE_DEFINITION, holder, rexpr, NULL, pos);
   return defnode;
 }
 
 astnode_t *parse_definition_notype(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos) {
-  astnode_t* id=*(astnode_t**)list_get(collected, 0);  
-  astnode_t* rexpr=*(astnode_t**)list_get(collected, 1);
+  astnode_t* id=*(astnode_t**)list_get(collected, 0);
+  astnode_t *rexpr = *(astnode_t **)list_get(collected, 1);
+  astnode_t* holder=create_node(NODE_LEAFHOLDER, id, NULL, NULL, id->position);
   astnode_t *defnode =
-      create_node(NODE_DEFINITION, id, rexpr, NULL, pos);
+      create_node(NODE_DEFINITION, holder, rexpr, NULL, pos);
   return defnode;
 }
 
@@ -824,8 +876,8 @@ ttt(pat_ext_funcdecl) = {
     EXTERN,     FN,    TOKEN_ID,     OPENPAREN, TOKEN_ARGLIST,
     CLOSEPAREN, COLON, TOKEN_TYPEKW, SEMICOLON};
 ttt(pat_single_expr) = {TOKEN_EXPR, SEMICOLON};
-ttt(pat_if)={IF, TOKEN_EXPR, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
-ttt(pat_while) = {WHILE, TOKEN_EXPR, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
+ttt(pat_if)={IF, TOKEN_EXPR_COND, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
+ttt(pat_while) = {WHILE, TOKEN_EXPR_COND, OPENBRACE, TOKEN_STATEMENTS, CLOSEBRACE};
 ttt(pat_break) = {BREAK, SEMICOLON};
 ttt(pat_return) = {RETURN, TOKEN_EXPR, SEMICOLON};
 ttt(pat_return_noexpr) = {RETURN, SEMICOLON};
@@ -893,8 +945,8 @@ astnode_t* do_parse(list_t* tokens){
   }
   return root;
 }
-int symtypcmp(symbol_type_t a, symbol_type_t b){
-  if(a.main_type==b.main_type && a.minor_type==b.minor_type){
+int symtypcmp(int a, int b) {
+  if(a==b){
     return 0;
   }
   return -1;

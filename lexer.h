@@ -19,6 +19,7 @@ typedef enum {
   // type
   INT,
   STRING,
+  TYPE_KEYWORD,
   // whitespace
   WHITESPACE,
   // separator
@@ -40,6 +41,7 @@ typedef enum {
   BITAND,
   BITOR,
   XOR,
+  DOT,
   // comparator
   EQUAL,
   GREATER,
@@ -63,6 +65,7 @@ typedef enum {
   TOKEN_ID,
   TOKEN_TYPEKW,
   TOKEN_EXPR,
+  TOKEN_EXPR_COND,// condition expression
   TOKEN_STATEMENTS,
   TOKEN_ARGLIST,
   TOKEN_CLASS_MEMBERDEF,

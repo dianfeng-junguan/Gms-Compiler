@@ -15,4 +15,4 @@ typedef struct{
  */
 bool do_sematic(astnode_t* ast);
 bool is_symtab_dup(list_t* syms, char* name); 
-
+void init_sematic();
