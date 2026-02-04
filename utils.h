@@ -3,6 +3,7 @@
 #include <stddef.h>
 typedef unsigned long long u64;
 typedef long long i64;
+typedef int symbol_type_index_t;
 typedef struct _filepos_t {
   size_t line;
   size_t column;

@@ -114,7 +114,7 @@ bool number_after(char *str, list_t *tokens, filepos_t pos) {
 
 bool word_begin(char c) { return isalpha(c) || c == '_'; }
 bool word_allowed(char c, char *start, size_t offset) {
-  return isalpha(c) || isdigit(c) || c == '_';
+  return isalpha(c) || isdigit(c) || c == '_' || c=='*' ;
 }
 typedef struct {
   char *str;
@@ -138,9 +138,23 @@ bool word_after(char *str, list_t *tokens, filepos_t pos) {
   token_t tok;
   bool f=false;
   for (size_t i = 0; i < sizeof(keywords) / sizeof(str_tok_pair_t); ++i) {
+    // typekw with * following is allowed
     if (strcmp(str, keywords[i].str) == 0) {
       tok = create_token(keywords[i].tok, str, pos);
+      f = true;
+      break;
+    } else if(strlen(str)>strlen(keywords[i].str)) {
+      for (int j=0; j < strlen(str); ++j) {
+        if ((j < strlen(keywords[i].str) && keywords[i].str[j] == str[j]) ||
+            str[j]=='*') {
+        } else {
+	  goto done; 
+	}
+      }
+      // it is a pointer
       f=true;
+      tok = create_token(TYPE_KEYWORD, str, pos);
+    done:;
     }
   }
   if (!f) {
@@ -160,28 +174,37 @@ bool whitespace_after(char *str, list_t *tokens, filepos_t pos) {
   return true;
 }
 static str_op_pair_t operators[] = {
-    {"==", EQUAL},      {">=", GREATER_EQUAL},
-    {"<=", LESS_EQUAL}, {"!=", NOT_EQUAL},
+    {"==", EQUAL},
+    {">=", GREATER_EQUAL},
+    {"<=", LESS_EQUAL},
+    {"!=", NOT_EQUAL},
 
-    {"&&", AND},        {"||", OR},
-    {"!", NOT},         {"^", XOR},
+    {"&&", AND},
+    {"||", OR},
+    {"!", NOT},
+    {"^", XOR},
 
-    {"+", ADD},         {"-", SUB},
-    {"*", MUL},         {"/", DIV},
+    {"+", ADD},
+    {"-", SUB},
+    {"*", MUL},
+    {"/", DIV},
     {"%", MOD},
 
-    {"<", GREATER},     {">", LESS},
+    {"<", GREATER},
+    {">", LESS},
 
     {"=", ASSIGN},
     {"&", BITAND},
     {"|", BITOR},
 
+    {".", DOT},
+    
 };
 
 bool operator_begin(char c) {
   return c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '^' ||
          c == '!' || c == '&' || c == '|' || c == '=' || c == '<' || c == '>' ||
-         c == '|' || c == '&';
+         c == '|' || c == '.';
 }
 bool operator_allowed(char c, char *start, size_t offset) {
   if (offset > 1) {
@@ -397,6 +420,7 @@ static char *mappings[] = {
     [TOKEN_STATEMENTS] = "TOKEN_STATEMENTS",
     [TOKEN_ARGLIST] = "TOKEN_ARGLIST",
     [CLASS] = "CLASS",
+    [TYPE_KEYWORD] = "TYPE_KEYWORD",    
 };
 char *tokentype_tostr(tokentype_t tt) { return mappings[tt]; }
 void free_token(token_t *tok) { FREEIFD(tok->value, myfree); }
