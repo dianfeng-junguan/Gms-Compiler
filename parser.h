@@ -4,12 +4,15 @@ typedef enum {
   // this is usally used when a node has more than 2 subnodes.
   // we put other subnodes under a new leafholder which is under the real
   // parent.
+
   NODE_LEAFHOLDER,
   NODE_SINGLEEXPR,
   // values
+
   NODE_CONSTANT,
   NODE_IDENTIFIER,
   // statements
+
   NODE_IF,
   NODE_ELSEIF,
   NODE_ELSE,
@@ -24,8 +27,10 @@ typedef enum {
   NODE_DECLARE_FUNC,
   NODE_CLASS,
   // expressions
+
   NODE_COMMALIST,
   // operator
+
   NODE_ADD,
   NODE_SUB,
   NODE_MUL,
@@ -36,9 +41,11 @@ typedef enum {
   NODE_BITAND,
   NODE_BITOR,
   NODE_XOR,
-  // visit property of object  
+  // visit property of object
+
   NODE_PROPERTY,
   // comparator
+  
   NODE_EQUAL,
   NODE_GREATER,
   NODE_LESS,
@@ -51,7 +58,6 @@ typedef enum {
   NODE_AND,
   NODE_OR,
   NODE_NOT,
-  //
   NODE_FUNCCALL,
   // others
   NODE_ARGLIST,
@@ -147,7 +153,7 @@ typedef struct{
 }symbol_t;
 astnode_t *do_parse(list_t *tokens);
 
-char* get_nodetype_str(astnode_type_t type);
+const char* get_nodetype_str(astnode_type_t type);
 
 void free_node(astnode_t *node);
 void free_symbol(symbol_t *sym);

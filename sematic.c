@@ -28,7 +28,7 @@ size_t while_depth = 0;
 int function_rettype = -1;
 bool in_function = false;
 list_t *current_func_arglist = NULL;
-static list_t type_table = {0};
+list_t type_table = {0};
 static symbol_type_t intrinsic_types[] = {
     {.name = "void", .size = 0},
     {.name = "int", .size = 8},
