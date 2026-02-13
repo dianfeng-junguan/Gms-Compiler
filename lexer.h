@@ -54,7 +54,8 @@ typedef enum {
   // logic
   AND,
   OR,
-  NOT, // this is also a bit operator
+  // this is also a bit operator
+  NOT,
   // values
   IDENTIFIER,
   CONSTANT_NUMBER,
@@ -65,7 +66,8 @@ typedef enum {
   TOKEN_ID,
   TOKEN_TYPEKW,
   TOKEN_EXPR,
-  TOKEN_EXPR_COND,// condition expression
+  // condition expression  
+  TOKEN_EXPR_COND,
   TOKEN_STATEMENTS,
   TOKEN_ARGLIST,
   TOKEN_CLASS_MEMBERDEF,
@@ -108,5 +110,5 @@ list_t do_lex(char *str);
 /// 
 /// reminder: the value str needs to be on the heap.
 token_t create_token(tokentype_t token_type, char *value, filepos_t pos);
-char* tokentype_tostr(tokentype_t tt);
+const char* tokentype_tostr(tokentype_t tt);
 void free_token(token_t* tok);
