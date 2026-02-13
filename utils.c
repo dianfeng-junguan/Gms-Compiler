@@ -105,3 +105,56 @@ void list_concat(list_t* dest,list_t* src){
     append(dest, list_get(src, i));
   }
 }
+
+
+CString create_string(){
+  CString cstr = {0};
+  cstr.len = 0;
+  cstr.data = NULL;
+  return cstr;
+}
+
+CString string_from(const char *conststr){
+  CString cstr = create_string();
+  cstr.len = strlen(conststr);
+  cstr.data = malloc(cstr.len + 1);
+  memset(cstr.data, 0, cstr.len + 1);  
+  assert(cstr.data);
+  strcpy(cstr.data, conststr);
+  return cstr;
+}
+CString string_clone(CString *cstr) {
+  CString new_cstr = string_from(cstr->data);
+  return new_cstr;
+}
+
+void string_push(CString *cstr, char *to_push) {
+  cstr->data = realloc(cstr->data, cstr->len + strlen(to_push) + 1);
+  assert(cstr->data);
+  strcpy(cstr->data+cstr->len, to_push);
+  cstr->len += strlen(to_push);
+}
+
+CString string_substr(CString* str, size_t start, size_t end){
+  assert(start <= end);
+  assert(str->len > start);  
+  assert(str->len > end);
+  CString cstr = create_string();
+  cstr.data = malloc(end-start+1);
+  cstr.len = end - start;
+  memset(cstr.data, 0, end - start + 1);
+  memcpy(cstr.data, str->data + start, end - start);
+  return cstr;
+}
+
+void free_string(CString* cstr){
+  assert(cstr->data);
+  free(cstr->data);
+  cstr->data = NULL;
+  cstr->len = 0;
+}
+
+char string_nth(CString* cstr, size_t n){
+  assert(cstr->len > n);
+  return cstr->data[n];
+}

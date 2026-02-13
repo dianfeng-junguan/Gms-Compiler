@@ -23,6 +23,28 @@ typedef struct
   
 }list_t;
 
+// this is mainly used to make string operations more convenient.
+// moreover, this can be used to deal with wide char.
+typedef struct{
+  char *data;
+  size_t len;
+} CString;
+
+// create an empty CString
+CString create_string();
+// create a CString from a raw char*. it does not consume the char*
+CString string_from(const char *conststr);
+// create a CString by cloning a existing one.
+CString string_clone(CString* cstr);
+/// push a raw string into CString.
+void string_push(CString *cstr, char *to_push);
+// copy a slice of CString.
+CString string_substr(CString *str, size_t start, size_t end);
+// take the nth char of the cstr.
+char string_nth(CString* cstr, size_t n); 
+// free the CString
+void free_string(CString* cstr);
+
 list_t create_list(size_t capacity, size_t element_size);
 /**
    initialzie the list.
