@@ -109,7 +109,7 @@ void aarch64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_s
   }
   case CODE_ALLOC_TMP: {
     // todo: alloc registers accordingly
-    char* reg=alloc_reg(reg_table, op1);
+    char* reg=alloc_reg(reg_table, intercode->op1.tmpvalue);
     //ASM(".set %s,%s\n",op1,reg);
     break;
   }    

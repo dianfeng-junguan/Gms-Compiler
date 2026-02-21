@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <stddef.h>
 typedef enum {
   CODE_DEF_FUNC,
   CODE_DEF_FUNC_END,
@@ -60,17 +61,25 @@ typedef enum {
   CODE_TEXT_SECTION,
 } intercode_type_t;
 
-typedef enum{
-  OPERAND_EMPTY=0,
+typedef enum {
+  OPERAND_EMPTY = 0,
   OPERAND_IMMEDIATE,
   OPERAND_TMPVAR,
   OPERAND_VALUE,
   OPERAND_ADDRESS,
   OPERAND_KEEP,
-}operandtype_t;
+  OPERAND_OFFSET,
+} operandtype_t;
+
+typedef struct _tmpvar_t{
+  // index used to mark the tmpvar
+  int index;
+}tmpvar_t;
 typedef struct {
   operandtype_t type;
-  char* value;
+  char *value;
+  tmpvar_t tmpvalue;
+  size_t offset;
 }operand_t;
 typedef struct {
   intercode_type_t type;
@@ -80,17 +89,22 @@ typedef struct {
 typedef struct _astnode_t astnode_t;
 list_t gen_intercode(astnode_t *ast);
 void free_intercode(intercode_t* code);
+void push_code(list_t *code_list, intercode_type_t code_type, operand_t op1,
+               operand_t op2, operand_t op3);
 const char *codetype_tostr(intercode_type_t type);
 // the operand is an immediate value.
 #define IMM(immediate)                                                         \
   ((operand_t){.type = OPERAND_IMMEDIATE, .value = immediate})
+operand_t imm_num(int value);
 // the operand is a tmpvar. this usually means it will be implemented by registers.
-#define TMP(tmpvar) ((operand_t){.type = OPERAND_TMPVAR, .value = tmpvar})
+#define TMP(tmpvar) ((operand_t){.type = OPERAND_TMPVAR, .value=NULL, .tmpvalue = tmpvar})
 // the operand is stored in a mem area. this could be variables or something
 // which you wanna take value of.
 // this will be interpreted like this in nasm:
 // mov rax,[value]
 #define VALUE(v) ((operand_t){.type = OPERAND_VALUE, .value = (v)})
+// the operand calculates the address by offseting the address of tmp by off and take the value as the operand
+#define OFFSETTMP(tmp,off) ((operand_t){.type = OPERAND_OFFSET, .tmpvalue = (tmp), .offset=off})
 // the operand is the pointer to a certain mem area. it uses the address of the
 // passed argument. this is used to jump to the address
 // in assembler, such operand will be interpreted as like this in nasm:
@@ -106,3 +120,5 @@ intercode_t create_code(intercode_type_t type, operand_t operand1, operand_t ope
     append(code_list, &__code);                                            \
   } while (0);
 
+#define TMPV_EMPTY(tmpvart) (tmpvart.index!=-1)
+#define TMPVAR_INDEX_NULL -1

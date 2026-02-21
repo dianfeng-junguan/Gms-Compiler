@@ -3,11 +3,13 @@
 #include <stddef.h>
 typedef unsigned long long u64;
 typedef long long i64;
+#define SYMBOL_TYPE_INDEX_NULL -1
 typedef int symbol_type_index_t;
 typedef struct _filepos_t {
   size_t line;
   size_t column;
-}filepos_t;
+} filepos_t;
+
 /*
   the list is an array of pointers to the real data.
   when created it has a capacity. if it's full. it reallocates
@@ -28,22 +30,25 @@ typedef struct
 typedef struct{
   char *data;
   size_t len;
-} CString;
+} cstring_t;
 
 // create an empty CString
-CString create_string();
+cstring_t create_string();
 // create a CString from a raw char*. it does not consume the char*
-CString string_from(const char *conststr);
+cstring_t string_from(const char *conststr);
 // create a CString by cloning a existing one.
-CString string_clone(CString* cstr);
+cstring_t string_clone(cstring_t* cstr);
 /// push a raw string into CString.
-void string_push(CString *cstr, char *to_push);
+void string_push(cstring_t *cstr, char *to_push);
 // copy a slice of CString.
-CString string_substr(CString *str, size_t start, size_t end);
+cstring_t string_substr(cstring_t *str, size_t start, size_t end);
 // take the nth char of the cstr.
-char string_nth(CString* cstr, size_t n); 
+char string_nth(cstring_t* cstr, size_t n); 
 // free the CString
-void free_string(CString* cstr);
+void free_string(cstring_t *cstr);
+// cstring version of sprintf. it automatically extends the string.
+void string_sprintf(cstring_t* cstr, char* fmt, ...);
+
 
 list_t create_list(size_t capacity, size_t element_size);
 /**
@@ -55,7 +60,9 @@ list_t create_list(size_t capacity, size_t element_size);
 void init_list(list_t* list, size_t capacity, size_t element_size);
 
 void list_append(list_t *list, void *element);
+void list_insert(list_t *list, size_t position, void* element);
 void list_remove(list_t *list, size_t index);
+void list_swap(list_t *list, size_t pos1, size_t pos2);
 void list_remove_shallow(list_t *list, size_t index);
 void *list_get(list_t *list, size_t index);
 
@@ -108,14 +115,23 @@ void free_rest();
 #define NEED_LOG
 
 #define LOG_LEVEL VERBOSE
+#define INTERCODE_VERBOSE 1
 #ifdef NEED_LOG
-#define LOG(level, fmt, ...) if(level>=LOG_LEVEL)printf(fmt,##__VA_ARGS__);
+#define LOG(level, fmt, ...)                                                   \
+  if (level >= LOG_LEVEL)                                                      \
+    printf(fmt, ##__VA_ARGS__);
+void do_log(int level, int part, const char* fmt, ...);
 #define LOGERR(level, sender, pos, fmt, ...) if(level>=LOG_LEVEL)cry_errorf(sender, pos, fmt,##__VA_ARGS__);
 #else
 #define LOG(level, fmt, ...)
 #define LOGERR(level, sender, pos, fmt, ...)
 #endif
-
+typedef enum {
+  INTERCODE_ALLOCSYM,
+  SEMATIC_CHECK,
+  PARSER_OUTPUT,
+  LEXER_OUTPUT,
+} log_parts;
 
 #endif
 

@@ -16,16 +16,26 @@
   } while (0);
 static size_t stk_argsz = 0;
 static char* format_operand(operand_t op,list_t* reg_table){
-   if(!op.value)return NULL;
   switch (op.type) {
   case OPERAND_TMPVAR: {
     for (size_t i=0; i < reg_table->len; ++i) {
       reg_tmpvar_pair_t* pair=list_get(reg_table, i);
-      if(pair->var&&strcmp(op.value,pair->var)==0){
+      if(pair->var!=TMPVAR_INDEX_NULL&&op.tmpvalue.index==pair->var){
 	return pair->reg;
       }
     }
     //cry_errorf(SENDER_ASMGEN, ((filepos_t){0,0}), "tmpvar used before alloced");
+    break;
+  }
+  case OPERAND_OFFSET: {
+    for (size_t i=0; i < reg_table->len; ++i) {
+      reg_tmpvar_pair_t* pair=list_get(reg_table, i);
+      if (pair->var > 0 && op.tmpvalue.index == pair->var) {
+        cstring_t cstr = create_string();
+	string_sprintf(&cstr, "[%s+%zu]",pair->reg,op.offset);
+	return cstr.data;
+      }
+    }
     break;
   }
   default:break;
@@ -78,7 +88,7 @@ i64 get_stkoff(list_t *var_stkoffs, char* var){
 void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table, platform_info_t arch, list_t *var_stkoffs){
   char* op1=format_operand(intercode->op1, reg_table);
   char* op2=format_operand(intercode->op2, reg_table);
-  char* op3=format_operand(intercode->op3, reg_table);
+  char *op3 = format_operand(intercode->op3, reg_table);
   abi_t abi=get_abi(arch.abi);
   switch (intercode->type) {
   case CODE_DATA_SECTION:
@@ -138,7 +148,18 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
   }
   case CODE_ALLOC_TMP: {
     // todo: alloc registers accordingly
-    char* reg=alloc_reg(reg_table, op1);
+    char *endptr;
+    long tmpsz = strtol(op2, &endptr, 10);
+    assert(endptr!=op2);
+    if (tmpsz<=8) {
+      char* reg=alloc_reg(reg_table, intercode->op1.tmpvalue);
+    }else{
+      // need to alloc stack space
+      size_t aligned_size = (tmpsz + 7) & ~7;
+      ASM("sub rsp,%zu\n", aligned_size);
+      /* TODO: alloc stack space for tmpvar */
+    }
+    
     //ASM("%%define %s %s\n",op1,reg);
     break;
   }    
@@ -235,7 +256,7 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
   }
   case CODE_FREE: {
     // useful for tempvars
-    free_reg(reg_table, op1);
+    free_reg(reg_table, intercode->op1.tmpvalue);
     break;
   }
   case CODE_PUSHARG: {
@@ -247,7 +268,7 @@ void amd64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_sub
   case CODE_FUNCCALL: {
     /* to pass args. we store the value of tmpvars into stack and then mov it to the registers before
      calling the func*/
-    char* ret_reg=op2;
+    char *ret_reg = op2;
     // save used caller-saved regs but the reg used to store return value
     size_t pushed_regs_num=0;
     for (size_t i=0; i<abi.caller_saved_regs_num; i++) {

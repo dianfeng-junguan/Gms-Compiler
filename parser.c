@@ -13,9 +13,6 @@ static size_t node_free_counter=0;
 void free_node(astnode_t *node) {
   //printf("freed %s=%s@%d type %d\n",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer, node->value_type);
   FREEIFD(node->value,myfree);
-  if(node->syms.array){
-    FREE_LIST_DTOR(&node->syms, free_symbol);
-  }
   FREEIFD(node,myfree);      
 }
 
@@ -36,8 +33,8 @@ astnode_t *create_node(astnode_type_t type, astnode_t *left, astnode_t *right,
   }else{
     node->value=NULL;
   }
-  
-  node->syms=create_list(0, sizeof(symbol_t));
+
+  node->syms = NULL;  
   node->position = position;
   node->value_type = 0;
   node->layer = 0;

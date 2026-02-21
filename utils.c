@@ -1,6 +1,8 @@
 #include "utils.h"
 #include <assert.h>
+#include <stdarg.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 list_t create_list(size_t capacity, size_t element_size){
@@ -25,6 +27,34 @@ void list_append(list_t *list, void *element){
     list->capacity*=2;
   }
   memcpy(list->array+list->len*list->element_size, element, list->element_size);
+  list->len++;
+}
+void list_swap(list_t *list, size_t pos1, size_t pos2) {
+  assert(pos1 < list->len);
+  assert(pos2 < list->len);
+  for (size_t i=0; i < list->element_size; ++i) {
+    char *element1 = list->array + pos1 * list->element_size;
+    char *element2 = list->array + pos2 * list->element_size;
+    char tmp = element1[i];
+    element1[i] = element2[i];
+    element2[i]=tmp;    
+  }
+  
+}
+void list_insert(list_t *list, size_t position, void *element) {
+  assert(list->len > position);
+  // must panic when assert fails bc it means mistakes in code
+  // check if it is capable of containing the grown len
+  if (list->capacity<=list->len+1) {
+    // grow the capacity
+    list->array=realloc(list->array, list->capacity*list->element_size*2);
+    list->capacity*=2;
+  }
+  memmove(list->array + list->element_size * (1 + position),
+          list->array + list->element_size * position,
+          list->element_size * (list->len - position));
+  memcpy(list->array + list->element_size * position, element,
+         list->element_size);
   list->len++;
 }
 void list_remove(list_t *list, size_t index){
@@ -107,15 +137,15 @@ void list_concat(list_t* dest,list_t* src){
 }
 
 
-CString create_string(){
-  CString cstr = {0};
+cstring_t create_string(){
+  cstring_t cstr = {0};
   cstr.len = 0;
   cstr.data = NULL;
   return cstr;
 }
 
-CString string_from(const char *conststr){
-  CString cstr = create_string();
+cstring_t string_from(const char *conststr){
+  cstring_t cstr = create_string();
   cstr.len = strlen(conststr);
   cstr.data = malloc(cstr.len + 1);
   memset(cstr.data, 0, cstr.len + 1);  
@@ -123,23 +153,23 @@ CString string_from(const char *conststr){
   strcpy(cstr.data, conststr);
   return cstr;
 }
-CString string_clone(CString *cstr) {
-  CString new_cstr = string_from(cstr->data);
+cstring_t string_clone(cstring_t *cstr) {
+  cstring_t new_cstr = string_from(cstr->data);
   return new_cstr;
 }
 
-void string_push(CString *cstr, char *to_push) {
+void string_push(cstring_t *cstr, char *to_push) {
   cstr->data = realloc(cstr->data, cstr->len + strlen(to_push) + 1);
   assert(cstr->data);
   strcpy(cstr->data+cstr->len, to_push);
   cstr->len += strlen(to_push);
 }
 
-CString string_substr(CString* str, size_t start, size_t end){
+cstring_t string_substr(cstring_t* str, size_t start, size_t end){
   assert(start <= end);
   assert(str->len > start);  
   assert(str->len > end);
-  CString cstr = create_string();
+  cstring_t cstr = create_string();
   cstr.data = malloc(end-start+1);
   cstr.len = end - start;
   memset(cstr.data, 0, end - start + 1);
@@ -147,14 +177,44 @@ CString string_substr(CString* str, size_t start, size_t end){
   return cstr;
 }
 
-void free_string(CString* cstr){
+void free_string(cstring_t* cstr){
   assert(cstr->data);
   free(cstr->data);
   cstr->data = NULL;
   cstr->len = 0;
 }
 
-char string_nth(CString* cstr, size_t n){
+char string_nth(cstring_t* cstr, size_t n){
   assert(cstr->len > n);
   return cstr->data[n];
+}
+static char string_fmtbuf[2048]={0};
+void string_sprintf(cstring_t* cstr, char* fmt, ...){
+  va_list args;
+  va_start(args,fmt);
+  vsnprintf(string_fmtbuf, sizeof(string_fmtbuf), fmt, args);
+  size_t slen = strnlen(string_fmtbuf, sizeof(string_fmtbuf));
+  if (cstr->len<slen) {
+    cstr->data = cstr->data?realloc(cstr->data, slen + 1):malloc(slen+1);
+    cstr->len = slen;
+  }
+  strcpy(cstr->data, string_fmtbuf);
+  va_end(args);
+}
+static int log_level = VERBOSE;
+
+static int log_parts_switch[] = {
+    [INTERCODE_ALLOCSYM] = 1,
+    [SEMATIC_CHECK] = 1,
+    [PARSER_OUTPUT] = 0,
+    [LEXER_OUTPUT] = 0,
+    
+};
+void do_log(int level, int part, const char* fmt, ...){
+  if (level>=log_level&&log_parts_switch[part]) {
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+  }
 }

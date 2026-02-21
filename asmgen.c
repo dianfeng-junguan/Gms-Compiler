@@ -1,33 +1,34 @@
+#include "intercode.h"
 #include "string.h"
 #include "err.h"
 #include "asmgen.h"
 #include "assert.h"
 #include "stdlib.h"
 #include "stdbool.h"
-char *alloc_reg(list_t* regs, char* varname) {
+char *alloc_reg(list_t* regs, tmpvar_t tmpname) {
   for (size_t i=0; i < regs->len; ++i) {
     reg_tmpvar_pair_t* p=list_get(regs, i);
-    if(!p->var||strcmp(p->var,varname)==0){
-      p->var=varname;
+    if(p->var==TMPVAR_INDEX_NULL||p->var==tmpname.index){
+      p->var=tmpname.index;
       return p->reg;
     }
   }
   cry_error(SENDER_ASMGEN, "registers full while allocating temporary varaibles", (filepos_t){0});
   return NULL;
 }
-void free_reg(list_t* regs, char* varname){
+void free_reg(list_t* regs, tmpvar_t tmpname){
   for (size_t i=0; i < regs->len; ++i) {
     reg_tmpvar_pair_t* p=list_get(regs, i);
-    if(p->var&&strcmp(p->var,varname)==0){
-      p->var=NULL;      
+    if(p->var==tmpname.index){
+      p->var=TMPVAR_INDEX_NULL;
     }
   }
 }
 
-char* get_reg(list_t *regs,char* varname){
+char* get_reg(list_t *regs,tmpvar_t tmpname){
   for (size_t i=0; i<regs->len; i++) {
     reg_tmpvar_pair_t *pair=list_get(regs, i);
-    if(pair->var&&strcmp(pair->var, varname)==0){
+    if(pair->var== tmpname.index){
       return pair->reg;
     }
   }
@@ -36,7 +37,7 @@ char* get_reg(list_t *regs,char* varname){
 bool is_reg_used(list_t *regs,char* regname){
   for (size_t i=0; i<regs->len; i++) {
     reg_tmpvar_pair_t *pair=list_get(regs, i);
-    if(strcmp(pair->reg, regname)==0&&pair->var){
+    if(strcmp(pair->reg, regname)==0&&pair->var!=TMPVAR_INDEX_NULL){
       return true;
     }
   }
@@ -48,7 +49,7 @@ reg_tmpvar_pair_t* create_regvar(char* reg){
   reg_tmpvar_pair_t* stru=malloc(sizeof(reg_tmpvar_pair_t));
   assert(stru);
   strcpy(stru->reg,reg);
-  stru->var=NULL;
+  stru->var=TMPVAR_INDEX_NULL;
   return stru;
 }
 
@@ -86,4 +87,12 @@ abi_t get_abi(abitype_t abi){
       return abis[i];
     }
   }
+  panic("met unknown abi\n");
 }
+
+stackframe_t create_stackframe();
+void grow_stack(size_t size);
+void shrink_stack(size_t size);
+void add_local(stackframe_t *stk, char *name, size_t var_size);
+void remove_local(stackframe_t *stk, char *name);
+long long get_local_offset(stackframe_t* stk, char* name);
