@@ -1,15 +1,17 @@
 #include "utils.h"
+#include <stddef.h>
+#include <stdio.h>
+typedef struct _tmpvar_t tmpvar_t;
 #include <stdbool.h>
 typedef struct {
-  char reg[4];
-  char* var;
-} reg_tmpvar_pair_t;
+  union{
+    int reg;// the index of register in the register table
+    size_t offset;//used for tmpvars on the stack
+  };
+  int tmpv_index;
+  int onstack;
+} tmpvar_alloc_info_t;
 
-char *alloc_reg(list_t *regs, char *varname);
-bool is_reg_used(list_t *regs,char* regname);
-void free_reg(list_t *regs, char *varname);
-void free_reg_str_pair(reg_tmpvar_pair_t *p);
-reg_tmpvar_pair_t* create_regvar(char* reg);
 typedef enum { ABI_SYSTEMV, ABI_MICROSOFT } abitype_t;
 
 typedef struct {
@@ -33,8 +35,39 @@ typedef struct {
   arch_t architecture;
   abitype_t abi;
 }platform_info_t;
+
+typedef struct {
+  size_t stack_offset;
+  size_t size;
+  cstring_t varname;
+} stackpos_local_t;
+/// the position vars in the struct is suggested to be interpreted as the offset from stack frame pointer. if so, the `start` will always be 0.
+typedef struct _stackframe_t{
+  size_t start;
+  size_t end;
+  // table (stackpos, local var)
+  list_t locals;
+} stackframe_t;
+stackframe_t create_stackframe();
+void free_stackframe(stackframe_t* sf);
+/// grow the stackframe. returns the offset of the new alloced space
+size_t grow_stack(stackframe_t* stk, size_t size);
+void shrink_stack(stackframe_t *stk, size_t size);
+void clear_stack(stackframe_t* stk);
+/// alloc stack space for local variable and return the offset on the stack of the space alloced.
+size_t add_local(stackframe_t *stk, char *name, size_t var_size);
+void remove_local(stackframe_t *stk, char *name);
+/// get the stack offset of the allocated varname. if the var cannot be found, it returns -1.
+long long get_local_offset(stackframe_t* stk, char* name);
+
+int tmpv_alloc_reg(list_t *tmpv_table, tmpvar_t tmpv, size_t reg_num);
+size_t tmpv_alloc_stack(list_t *tmpv_table, tmpvar_t tmpname, stackframe_t* sf);
+bool is_reg_used(list_t *tmpv_table,int regno);
+void free_tmpvar(list_t *tmpv_table, tmpvar_t varname, stackframe_t *sf);
+void free_reg_str_pair(tmpvar_alloc_info_t *p);
+
 abi_t get_abi(abitype_t abi);
-char* get_reg(list_t *regs,char* varname);
+char* get_reg(list_t *regs,tmpvar_t varname);
 #ifdef _AMD64
 char *amd64_gen(list_t *intercodes,platform_info_t arch);
 #else

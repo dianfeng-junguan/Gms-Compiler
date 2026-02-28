@@ -144,7 +144,7 @@ bool word_after(char *str, list_t *tokens, filepos_t pos) {
       f = true;
       break;
     } else if(strlen(str)>strlen(keywords[i].str)) {
-      for (int j=0; j < strlen(str); ++j) {
+      for (size_t j=0; j < strlen(str); ++j) {
         if ((j < strlen(keywords[i].str) && keywords[i].str[j] == str[j]) ||
             str[j]=='*') {
         } else {

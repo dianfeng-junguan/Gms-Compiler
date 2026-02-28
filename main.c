@@ -6,12 +6,32 @@
 #include "intercode.h"
 #include "intercode2.h"
 #include "asmgen.h"
+#include "status.h"
 #include "utils.h"
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+char *codeop_fmt(operand_t op) {
+  switch (op.type) {
+  case OPERAND_TMPVAR: {
+    cstring_t cstr = create_string();
+    string_sprintf(&cstr, "tmp@%d", op.tmpvalue.index);
+    return cstr.data;
+  }
+  case OPERAND_OFFSET: {
+    cstring_t cstr = create_string();
+    string_sprintf(&cstr, "[tmp@%d+%zu]", op.tmpvalue.index, op.offset);
+    return cstr.data;
+    break;
+  }    
+  default:
+    return op.value;
+  }
+}
+void print_intercode(intercode_t* code){
+  printf("%s \t\t%s,\t%s,\t%s\n", codetype_tostr(code->type), codeop_fmt(code->op1),codeop_fmt(code->op2),codeop_fmt(code->op3));
+}
 
 void print_node(astnode_t* node, int indent){
   printf("%*s%s=%s@%d type %d\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer, node->value_type);
@@ -113,6 +133,8 @@ int main(int argc, char** argv){
   /*   return -2;			    */
   /* }					    */
   /******************************************/
+  compiler_global_data_t globals;
+  init_compiler_global_data(&globals);
   init_sematic();
   list_t tokens=do_lex(source);
   // free the source
@@ -126,8 +148,9 @@ int main(int argc, char** argv){
 #endif
   astnode_t *asttree=do_parse(&tokens);
 
-  if (!asttree || !(do_sematic(asttree))) {
+  if (!asttree || !(do_sematic(asttree,&globals))) {
     print_node(asttree, 0);
+    printf("compilation failed\n");
     return -1;
   }
   
@@ -138,8 +161,8 @@ int main(int argc, char** argv){
   list_t intercodes=process_intercode(&ic1);
 #ifdef DEBUG
   for (size_t i=0; i < intercodes.len; ++i) {
-    intercode_t* code=list_get(&intercodes, i);
-    printf("%s %s,%s,%s\n", codetype_tostr(code->type), code->op1.value, code->op2.value, code->op3.value);
+    intercode_t *code = list_get(&intercodes, i);
+    print_intercode(code);
   }
 #endif
   platform_info_t platform={

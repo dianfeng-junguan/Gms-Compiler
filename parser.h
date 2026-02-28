@@ -70,6 +70,10 @@ typedef enum {
   
 } astnode_type_t;
 
+typedef struct symtab{
+  list_t table;
+  struct symtab *parent;
+} symbol_table_t;
 typedef enum {
   TYPE_VOID = 0,
   TYPE_INT,
@@ -121,7 +125,7 @@ typedef struct _astnode_t{
   // used for value nodes.
   char* value;
   // used for sematics.
-  list_t syms;
+  symbol_table_t* syms;
   filepos_t position;
   // layer here means the depth of the scope.
   // used to differentiate symbols defined at different depths of scopes.
@@ -158,6 +162,14 @@ const char* get_nodetype_str(astnode_type_t type);
 void free_node(astnode_t *node);
 void free_symbol(symbol_t *sym);
 void free_all_nodes();
+
+
+symbol_table_t create_symtab(symbol_table_t *parent);
+void add_symbol(symbol_table_t *symtab, symbol_t sym);
+/// search for the symbol in the symbol table. if the symbol cannot be
+/// found and this symtab has a parent, it searches in the parent table.
+symbol_t *find_symbol(symbol_table_t *symtab, char *name);
+void free_symtab(symbol_table_t *symtab);
 //
 #define NODE_DEF_ID(node) (node->left->left)
 #define NODE_DEF_TYPEKW(node) (node->left->right)

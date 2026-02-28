@@ -16,7 +16,7 @@
   } while (0);
 
 static size_t stk_argsz = 0;
-static char* format_operand(operand_t op,list_t* reg_table){
+static char* format_operand(operand_t op,list_t* reg_table,char** regs){
   if(!op.value)return NULL;
   switch (op.type) {
   case OPERAND_ADDRESS:return op.value;
@@ -43,9 +43,9 @@ static char* format_operand(operand_t op,list_t* reg_table){
   }
   case OPERAND_TMPVAR: {
     for (size_t i=0; i < reg_table->len; ++i) {
-      reg_tmpvar_pair_t* pair=list_get(reg_table, i);
-      if(pair->var&&strcmp(op.value,pair->var)==0){
-	return pair->reg;
+      tmpvar_alloc_info_t* pair=list_get(reg_table, i);
+      if (pair->tmpv_index && op.tmpvalue.index == pair->tmpv_index) {
+	return regs[pair->reg];
       }
     }
     cry_errorf(SENDER_ASMGEN, ((filepos_t){0,0}), "tmpvar used before alloced");
@@ -55,10 +55,13 @@ static char* format_operand(operand_t op,list_t* reg_table){
   }
   return op.value;
 }
-void aarch64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_subbase, list_t *reg_table, platform_info_t arch){
-  char* op1=format_operand(intercode->op1, reg_table);
-  char* op2=format_operand(intercode->op2, reg_table);
-  char* op3=format_operand(intercode->op3, reg_table);
+void aarch64_translate(list_t *list_asm, intercode_t *intercode,
+                       size_t *stack_subbase, list_t *reg_table,
+                       platform_info_t arch) {
+  abi_t abi=get_abi(arch.abi);
+  char* op1=format_operand(intercode->op1, reg_table, abi.caller_saved_regs);
+  char* op2=format_operand(intercode->op2, reg_table, abi.caller_saved_regs);
+  char* op3=format_operand(intercode->op3, reg_table, abi.caller_saved_regs);
   switch (intercode->type) {
   case CODE_DATA_SECTION:
     ASM(".data\n");
@@ -109,7 +112,8 @@ void aarch64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_s
   }
   case CODE_ALLOC_TMP: {
     // todo: alloc registers accordingly
-    char* reg=alloc_reg(reg_table, op1);
+    tmpv_alloc_reg(reg_table, intercode->op1.tmpvalue,
+                   abi.caller_saved_regs_num);    
     //ASM(".set %s,%s\n",op1,reg);
     break;
   }    
@@ -258,15 +262,7 @@ void aarch64_translate(list_t* list_asm, intercode_t* intercode, size_t *stack_s
 char* aarch64_gen(list_t* intercodes,platform_info_t arch){
   list_t asm_codes=create_list(20, sizeof(char*));
   size_t stk=0;
-  list_t reg_table=create_list(8, sizeof(reg_tmpvar_pair_t));
-  list_append(&reg_table, create_regvar("x0"));
-  list_append(&reg_table, create_regvar("x1"));
-  list_append(&reg_table, create_regvar("x2"));
-  list_append(&reg_table, create_regvar("x3"));
-  list_append(&reg_table, create_regvar("x4"));
-  list_append(&reg_table, create_regvar("x5"));
-  list_append(&reg_table, create_regvar("x6"));
-  list_append(&reg_table, create_regvar("x7"));
+  list_t reg_table=create_list(8, sizeof(tmpvar_alloc_info_t));
   // something
   ASMU(&asm_codes, ".arch arm64\n");
   
