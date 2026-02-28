@@ -24,7 +24,6 @@ typedef struct
   char* array;
   
 }list_t;
-
 // this is mainly used to make string operations more convenient.
 // moreover, this can be used to deal with wide char.
 typedef struct{
@@ -131,6 +130,7 @@ typedef enum {
   SEMATIC_CHECK,
   PARSER_OUTPUT,
   LEXER_OUTPUT,
+  ASMGEN_ALLOCREG  
 } log_parts;
 
 #endif

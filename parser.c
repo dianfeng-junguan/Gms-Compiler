@@ -75,35 +75,7 @@ astnode_t *prefix_handler_id(token_t *lefttoken, list_t *tokens, size_t *iter) {
 astnode_t* prefix_handler_const(token_t *lefttoken, list_t *tokens, size_t* iter){
   // LOG(VERBOSE, "%s ",lefttoken->value);
   (*iter)++;
-  symbol_type_t node_value_type={TYPE_VOID,TYPE_VOID};
   char* value=lefttoken->value;
-  switch (lefttoken->token_type) {
-  case CONSTANT_NUMBER: {
-    node_value_type=(symbol_type_t){TYPE_INT, TYPE_VOID};
-    value=clone_str(lefttoken->value);
-    break;
-  }
-  case CONSTANT_STRING: {
-    node_value_type=(symbol_type_t){TYPE_STRING, TYPE_VOID};
-    value=clone_str(lefttoken->value);
-    break;
-  }
-  case CONSTANT_CHAR:{
-    node_value_type=(symbol_type_t){TYPE_INT, TYPE_VOID};
-    // convert to int
-    char* charv=lefttoken->value;
-    // '(char)'
-    int character=charv[1];
-    value=myalloc(4);
-    sprintf(value, "%d", character);
-    
-    break;
-  }
-  default:
-    node_value_type=(symbol_type_t){TYPE_VOID, TYPE_VOID};
-    break;
-  }
-
   astnode_t *node =
       create_node(NODE_CONSTANT, NULL, NULL, value, lefttoken->position);
   node->extra_info=lefttoken->token_type;

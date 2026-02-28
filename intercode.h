@@ -74,6 +74,7 @@ typedef enum {
 typedef struct _tmpvar_t{
   // index used to mark the tmpvar
   int index;
+  size_t size;
 }tmpvar_t;
 typedef struct {
   operandtype_t type;
@@ -91,6 +92,7 @@ list_t gen_intercode(astnode_t *ast);
 void free_intercode(intercode_t* code);
 void push_code(list_t *code_list, intercode_type_t code_type, operand_t op1,
                operand_t op2, operand_t op3);
+void intercode_tostr(char* buf, intercode_t *ic);
 const char *codetype_tostr(intercode_type_t type);
 // the operand is an immediate value.
 #define IMM(immediate)                                                         \

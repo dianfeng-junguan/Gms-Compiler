@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "utils.h"
 #include <assert.h>
 #include <stdarg.h>
@@ -68,6 +69,7 @@ void list_remove(list_t *list, size_t index){
     list->array=realloc(list->array, list->capacity*list->element_size/2);
     list->capacity/=2;
   }
+  list->len--;  
 }
 void* list_get(list_t* list, size_t index){
   assert(index < list->len);
@@ -208,6 +210,7 @@ static int log_parts_switch[] = {
     [SEMATIC_CHECK] = 1,
     [PARSER_OUTPUT] = 0,
     [LEXER_OUTPUT] = 0,
+    [ASMGEN_ALLOCREG] = 1,
     
 };
 void do_log(int level, int part, const char* fmt, ...){
@@ -218,3 +221,4 @@ void do_log(int level, int part, const char* fmt, ...){
     va_end(args);
   }
 }
+
