@@ -256,6 +256,7 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     TWOOP_INTERCODE(BITOR);
 
   case NODE_REFER: {
+    // refer is restricted to identifiers so we can directly use the right node 
     tmpvar_t res = make_tmpvar(8);
     push_code(code_list, CODE_REFER, TMP(res), ADDR(node->right->value), EMPTY);
     return res;
@@ -520,6 +521,7 @@ list_t gen_intercode(astnode_t *ast) {
   CODE(&codes, CODE_ALLOC_TMP, TMP(tmpv), IMM("8"), EMPTY);
   CODE(&codes, CODE_FUNCCALL, ADDR("main"), TMP(tmpv), EMPTY);
   CODE(&codes, CODE_RETURN, EMPTY, EMPTY, EMPTY);
+  CODE(&codes, CODE_DEF_FUNC_END, EMPTY, EMPTY, EMPTY);
   gen_node(ast, &codes, 0, 0);
   return codes;
 }

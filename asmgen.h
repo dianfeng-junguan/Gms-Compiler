@@ -12,15 +12,19 @@ typedef struct {
   int onstack;
 } tmpvar_alloc_info_t;
 
-typedef enum { ABI_SYSTEMV, ABI_MICROSOFT } abitype_t;
+typedef enum {
+  ABI_SYSTEMV,
+  ABI_MICROSOFT,
+  ABI_AARCH64,
+} abitype_t;
 
 typedef struct {
   abitype_t type;
-  char* arg_regs[12];
+  char* arg_regs[16];
   size_t arg_regs_num;
-  char* caller_saved_regs[12];
+  char* caller_saved_regs[24];
   size_t caller_saved_regs_num;
-  char* callee_saved_regs[12];
+  char* callee_saved_regs[24];
   size_t callee_saved_regs_num;
   char ret_reg[10];
 } abi_t;
@@ -68,8 +72,7 @@ void free_reg_str_pair(tmpvar_alloc_info_t *p);
 
 abi_t get_abi(abitype_t abi);
 char* get_reg(list_t *regs,tmpvar_t varname);
-#ifdef _AMD64
+
 char *amd64_gen(list_t *intercodes,platform_info_t arch);
-#else
 char *aarch64_gen(list_t *intercodes, platform_info_t arch);
-#endif
+
