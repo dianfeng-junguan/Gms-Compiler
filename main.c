@@ -96,15 +96,7 @@ int main(int argc, char** argv){
     printf("error: no input file\n");
     return 0;
   }
-  abitype_t abi=ABI_SYSTEMV;
-  if(strcmp(abi_str, "systemv")==0){
-    abi=ABI_SYSTEMV;
-  }else if(strcmp(abi_str, "microsoft")==0){
-    abi=ABI_MICROSOFT;
-  }else{
-    printf("error: unknown abi format\n");
-    return 0;
-  }
+
   arch_t arch=ARCH_AMD64;
   if(strcmp(arch_str, "amd64")==0){
     arch=ARCH_AMD64;
@@ -112,6 +104,17 @@ int main(int argc, char** argv){
     arch=ARCH_AARCH64;
   }else{
     printf("error: unknown architecture format\n");
+    return 0;
+  }  
+  abitype_t abi=(arch==ARCH_AARCH64?ABI_AARCH64:ABI_SYSTEMV);
+  if(strcmp(abi_str, "systemv")==0){
+    abi=ABI_SYSTEMV;
+  }else if(strcmp(abi_str, "microsoft")==0){
+    abi=ABI_MICROSOFT;
+  }else if(strcmp(abi_str, "aarch64")==0){
+    abi=ABI_AARCH64;
+  }else{
+    printf("error: unknown abi format\n");
     return 0;
   }
   FILE* f=fopen(input, "r");
@@ -165,11 +168,21 @@ int main(int argc, char** argv){
     print_intercode(code);
   }
 #endif
-  platform_info_t platform={
-    .abi=abi,
-    .architecture=arch
-  };
-  char* asmcode=amd64_gen(&intercodes,platform);
+  platform_info_t platform = {.abi = abi, .architecture = arch};
+
+  char *asmcode = NULL;
+  switch (arch) {
+  case ARCH_AMD64: {
+    asmcode=amd64_gen(&intercodes,platform);
+    break;
+  }
+  case ARCH_AARCH64:{
+    asmcode = aarch64_gen(&intercodes, platform);    
+  }
+  default:
+    break;
+  }
+  
   
   if(!asmcode){
     return -1;

@@ -264,7 +264,7 @@ void amd64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
         ASM("lea rsi,[rbp-%zu]\nlea rdi,[rbp-%zu]\n", offset2, offset1);
         ASM("mov rcx,%zu\n", objsz);        
 	ASM("rep movsb\n");
-        ASM("pop rcx\npop rdi\npop rsi\n");
+        ASM("pop rcx\npop rdi\npop rsi\\n");
 	break;        
       }
       // check if both operands are mems (invalid)

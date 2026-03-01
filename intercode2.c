@@ -48,9 +48,9 @@ list_t process_intercode(list_t* ic1){
     }
     /* extract string constant to the data section */
 #define EXTRACT_STRCONST(v)			\
-    if(v&&*v&&v[0]=='\"'){			\
-      char* strconst=make_tmp_label("const@");	\
-      CODE(&ic2, CODE_DATA, ADDR(strconst), ADDR(v), EMPTY);	\
+    if(v&&v[0]=='\"'){				\
+      char* strconst=make_tmp_label("const__");	\
+      CODE(&ic2, CODE_DATA, ADDR(strconst), IMM(v), EMPTY);	\
       myfree(v);				\
       v=strconst;				\
     }
