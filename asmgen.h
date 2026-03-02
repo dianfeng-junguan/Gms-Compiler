@@ -41,8 +41,10 @@ typedef struct {
 }platform_info_t;
 
 typedef struct {
+  int is_tmpvar;
   size_t stack_offset;
   size_t size;
+  int tmpvar_index;
   cstring_t varname;
 } stackpos_local_t;
 /// the position vars in the struct is suggested to be interpreted as the offset from stack frame pointer. if so, the `start` will always be 0.
@@ -61,6 +63,9 @@ void clear_stack(stackframe_t* stk);
 /// alloc stack space for local variable and return the offset on the stack of the space alloced.
 size_t add_local(stackframe_t *stk, char *name, size_t var_size);
 void remove_local(stackframe_t *stk, char *name);
+size_t stackframe_add_tmpvar(stackframe_t *stk, tmpvar_t tmpvar);
+void stackframe_remove_tmpvar(stackframe_t *stk, int tmpvar_index);
+long long stackframe_get_tmpvar_offset(stackframe_t *stk, int tmpvar_index);
 /// get the stack offset of the allocated varname. if the var cannot be found, it returns -1.
 long long get_local_offset(stackframe_t* stk, char* name);
 

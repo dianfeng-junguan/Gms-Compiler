@@ -22,9 +22,7 @@ static char* format_operand(operand_t op,list_t* tmpv_table, char** regs, stackf
       tmpvar_alloc_info_t *pair = list_get(tmpv_table, i);
       if (pair->tmpv_index != TMPVAR_INDEX_NULL && op.tmpvalue.index == pair->tmpv_index) {
         if (pair->onstack) {
-          char tmpvname[20];
-          sprintf(tmpvname, "tmp@%d", pair->tmpv_index);
-          size_t offset = get_local_offset(sf, tmpvname);
+          size_t offset = stackframe_get_tmpvar_offset(sf, op.tmpvalue.index);          
 	  cstring_t cstr = create_string();
 	  string_sprintf(&cstr, "[rbp-%zu]", offset);
 	  return cstr.data;
@@ -35,6 +33,9 @@ static char* format_operand(operand_t op,list_t* tmpv_table, char** regs, stackf
     }
     //cry_errorf(SENDER_ASMGEN, ((filepos_t){0,0}), "tmpvar used before alloced");
     break;
+  }
+  case OPERAND_STRING:{
+    return op.value;    
   }
   case OPERAND_VALUE:{
     size_t off = get_local_offset(sf, op.value);
@@ -57,6 +58,11 @@ static char* format_operand(operand_t op,list_t* tmpv_table, char** regs, stackf
     }
     break;
   }
+  case OPERAND_IMMEDIATE: {
+    cstring_t cstr = create_string();
+    string_sprintf(&cstr, "%d", op.num_value);
+    return cstr.data;
+  }    
   default:break;
   }
   return op.value;
@@ -113,7 +119,7 @@ void amd64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
 	if (code->type==CODE_DEF_FUNC_END) {
 	  break;
         } else if (code->type == CODE_ALLOC_LOCAL) {
-	  size_t sz=atoi(code->op2.value);
+	  size_t sz=code->op2.num_value;
           add_local(&current_sf, code->op1.value, sz);
           local_tot_sz += sz;          
 	}
@@ -250,16 +256,8 @@ void amd64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
         // this is a large MOV. break it down to smaller ones
         size_t objsz = sop1->type==OPERAND_TMPVAR?sop1->tmpvalue.size:sop2->tmpvalue.size;
         // the two operands must be in the stack
-        cstring_t op1name = sop1->value?string_from(sop1->value):create_string();
-        cstring_t op2name = sop2->value?string_from(sop2->value):create_string();
-        if (sop1->type==OPERAND_TMPVAR) {
-          string_sprintf(&op1name, "tmp@%d", sop1->tmpvalue.index);
-        }
-        if (sop2->type == OPERAND_TMPVAR) {          
-          string_sprintf(&op2name, "tmp@%d", sop2->tmpvalue.index);
-	}
-        size_t offset1 = get_local_offset(&current_sf, op1name.data);
-        size_t offset2 = get_local_offset(&current_sf, op2name.data);
+        size_t offset1 = stackframe_get_tmpvar_offset(&current_sf, sop1->tmpvalue.index);
+        size_t offset2 = stackframe_get_tmpvar_offset(&current_sf, sop2->tmpvalue.index);
         ASM("push rsi\npush rdi\npush rcx\n");
         ASM("lea rsi,[rbp-%zu]\nlea rdi,[rbp-%zu]\n", offset2, offset1);
         ASM("mov rcx,%zu\n", objsz);        

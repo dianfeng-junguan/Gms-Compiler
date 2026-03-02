@@ -39,9 +39,7 @@ size_t tmpv_alloc_stack(list_t *tmpv_table, tmpvar_t tmpname, stackframe_t* sf) 
       return -1;
     }
   }
-  char tmpvname[32];
-  sprintf(tmpvname, "tmp@%d",tmpname.index);
-  size_t offset=add_local(sf, tmpvname, tmpname.size);
+  size_t offset=stackframe_add_tmpvar(sf, tmpname);
   tmpvar_alloc_info_t newalloc = {
       .tmpv_index = tmpname.index, .offset=offset, .onstack = 1};
   append(tmpv_table, &newalloc);
@@ -51,14 +49,13 @@ void free_tmpvar(list_t* tmpv_table, tmpvar_t tmpname, stackframe_t *sf){
   for (size_t i=0; i < tmpv_table->len; ++i) {
     tmpvar_alloc_info_t* p=list_get(tmpv_table, i);
     if (p->tmpv_index == tmpname.index) {
-      do_log(VERBOSE, ASMGEN_ALLOCREG, "freed tmpvar tmp@%zu\n",tmpname.index);
-      list_remove(tmpv_table, i);
+      do_log(VERBOSE, ASMGEN_ALLOCREG, "freed tmpvar #%zu\n", tmpname.index);
       if (p->onstack) {
         /* TODO: free stackspace */
-        char tmpvarname[32];
-	sprintf(tmpvarname, "tmp@%d",tmpname.index);
-	remove_local(sf, tmpvarname);
-      }
+	stackframe_remove_tmpvar(sf, tmpname.index);
+      }      
+      list_remove(tmpv_table, i);
+      
       return;
     }
   }
@@ -158,7 +155,7 @@ void shrink_stack(stackframe_t *stk, size_t size) {
   stk->end -= size;
 }
 size_t add_local(stackframe_t *stk, char *name, size_t var_size){
-  stackpos_local_t localpos;
+  stackpos_local_t localpos={0};
   size_t local_offset = grow_stack(stk, var_size);
   localpos.size = var_size;
   localpos.stack_offset = local_offset;
@@ -195,3 +192,31 @@ void free_stackframe(stackframe_t* sf){
   clear_stack(sf);
   free_list(&sf->locals);
 }
+size_t stackframe_add_tmpvar(stackframe_t *stk, tmpvar_t tmpvar){
+  stackpos_local_t localpos={0};
+  size_t local_offset = grow_stack(stk, tmpvar.size);
+  localpos.is_tmpvar = 1;  
+  localpos.size = tmpvar.size;
+  localpos.stack_offset = local_offset;  
+  append(&stk->locals, &localpos);
+  return local_offset;
+}
+void stackframe_remove_tmpvar(stackframe_t *stk, int tmpvar_index){
+  for (size_t i=0; i < stk->locals.len; ++i) {
+    stackpos_local_t *local = list_get(&stk->locals, i);
+    if (local->tmpvar_index==tmpvar_index) {
+      list_remove(&stk->locals, i);
+      return;
+    }
+  }
+}
+long long stackframe_get_tmpvar_offset(stackframe_t *stk, int tmpvar_index){  
+  for (size_t i=0; i < stk->locals.len; ++i) {
+    stackpos_local_t *local = list_get(&stk->locals, i);
+    if (local->tmpvar_index==tmpvar_index) {
+      return local->stack_offset;
+    }
+  }
+  return -1;
+}
+  

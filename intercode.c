@@ -39,8 +39,8 @@ void allocate_syms(list_t *code_list, symbol_table_t *syms) {
     if (sym->is_extern||sym->type!=SYMBOL_VARIABLE) { 
       continue;
     }
-    push_code(code_list, CODE_ALLOC_LOCAL, KEEP(sym->name), imm_num(typesize),
-              EMPTY);
+    push_code(code_list, CODE_ALLOC_LOCAL,
+              KEEP(sym->name), IMM(typesize),EMPTY);    
   }    
 }
 /// push a intercode into the list
@@ -230,7 +230,7 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
       tmpvar_t lhs = gen_node(node->left, code_list, tmpnum, layer + 1); \
       tmpvar_t rhs = gen_node(node->right, code_list, tmpnum + 1, layer + 2); \
       tmpvar_t res = make_tmpvar(8);					\
-      push_code(code_list, CODE_ALLOC_TMP, TMP(res), IMM("8"), EMPTY);	\
+      push_code(code_list, CODE_ALLOC_TMP, TMP(res), IMM(8), EMPTY);	\
       push_code(code_list, CODE_##type_noprefix, TMP(lhs), TMP(rhs), TMP(res));	\
 									\
 									\
@@ -279,14 +279,14 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
       tmpvar_t rhs = gen_node(node->right, code_list, tmpnum + 1, layer + 1); \
       tmpvar_t tmpv = make_tmpvar(8);					\
       push_code(code_list, CODE_CMP, TMP(lhs), TMP(rhs), EMPTY);	\
-      push_code(code_list, CODE_ALLOC_TMP, TMP(tmpv), IMM("8"), EMPTY);	\
+      push_code(code_list, CODE_ALLOC_TMP, TMP(tmpv), IMM(8), EMPTY);	\
       char *donelbl = mklabel();					\
       char *truelbl = mklabel();					\
       push_code(code_list, CODE_##jmpcode, ADDR(truelbl), EMPTY, EMPTY); \
-      push_code(code_list, CODE_MOV, TMP(tmpv), IMM("0"), EMPTY);	\
+      push_code(code_list, CODE_MOV, TMP(tmpv), IMM(0), EMPTY);	\
       push_code(code_list, CODE_JMP, ADDR(donelbl), EMPTY, EMPTY);	\
       push_code(code_list, CODE_LABEL, ADDR(truelbl), EMPTY, EMPTY);	\
-      push_code(code_list, CODE_MOV, TMP(tmpv), IMM("1"), EMPTY);	\
+      push_code(code_list, CODE_MOV, TMP(tmpv), IMM(1), EMPTY);	\
       push_code(code_list, CODE_LABEL, ADDR(donelbl), EMPTY, EMPTY);	\
 									\
 									\
@@ -303,15 +303,30 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
 
   case NODE_IDENTIFIER: {
       tmpvar_t tmpv = make_tmpvar(8);
-      push_code(code_list, CODE_ALLOC_TMP, TMP(tmpv), IMM("8"), EMPTY);
+      push_code(code_list, CODE_ALLOC_TMP, TMP(tmpv), IMM(8), EMPTY);
       push_code(code_list, CODE_MOV, TMP(tmpv), VALUE(node->value), EMPTY);
       return tmpv;
       break;
     }
   case NODE_CONSTANT: {
     tmpvar_t tmpv = make_tmpvar(8);
-    push_code(code_list, CODE_ALLOC_TMP, TMP(tmpv), IMM("8"), EMPTY);
-    push_code(code_list, CODE_MOV, TMP(tmpv), IMM(node->value), EMPTY);
+    push_code(code_list, CODE_ALLOC_TMP, TMP(tmpv), IMM(8), EMPTY);
+    symbol_type_index_t strtypei=-1;
+    for (size_t i=0; i<type_table.len; i++) {
+      symbol_type_t *typ = list_get(&type_table, i);
+      if (strcmp(typ->name, "string")==0) {
+        strtypei = i;
+	break;
+      }
+    }
+    assert(strtypei!=-1);
+    if (node->value_type == strtypei) {
+      // string-type constant      
+      push_code(code_list, CODE_MOV, TMP(tmpv), STRCONST(node->value), EMPTY);
+    }else{
+      push_code(code_list, CODE_MOV, TMP(tmpv), imm_str(node->value), EMPTY);
+    }
+    
     return tmpv;
     break;
   }
@@ -339,15 +354,14 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     // alloc tmp, then fill it.
     symbol_type_t *symtype = list_get(&type_table, node->value_type);
     tmpvar_t tmpvar = make_tmpvar(symtype->size);    
-    push_code(code_list, CODE_ALLOC_TMP, TMP(tmpvar), imm_num(symtype->size),
-              EMPTY);
+    push_code(code_list, CODE_ALLOC_TMP, TMP(tmpvar), IMM(symtype->size),EMPTY);
     // fill the fields
     gen_classfill(code_list, node, &tmpvar);
     return tmpvar;
   }
   case NODE_PROPERTY: {
     tmpvar_t tmpvar = make_tmpvar(8);
-    push_code(code_list, CODE_ALLOC_TMP, TMP(tmpvar), IMM("8"), EMPTY);
+    push_code(code_list, CODE_ALLOC_TMP, TMP(tmpvar), IMM(8), EMPTY);
     // get the pointer to the object
     char *objectname = node->left->value;
     push_code(code_list, CODE_REFER, TMP(tmpvar), VALUE(objectname), EMPTY);
@@ -367,7 +381,7 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     tmpnum += tmpargnum;
     // then call the function
     tmpvar_t rettmpvar = make_tmpvar(8);
-    push_code(code_list, CODE_ALLOC_TMP, TMP(rettmpvar), IMM("8"), EMPTY);
+    push_code(code_list, CODE_ALLOC_TMP, TMP(rettmpvar), IMM(8), EMPTY);
     push_code(code_list, CODE_FUNCCALL, ADDR(node->left->value), TMP(rettmpvar),
               EMPTY);
     for (size_t i = 0; i < tmp_vars.len; i++) {
@@ -415,7 +429,7 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
   case NODE_IF: {
     tmpvar_t cond_var = gen_node(node->left, code_list, tmpnum, layer + 1);
     // for comparation nodes, they return 1 if condition is true
-    push_code(code_list, CODE_CMP, TMP(cond_var), IMM("1"), EMPTY);
+    push_code(code_list, CODE_CMP, TMP(cond_var), IMM(1), EMPTY);
     
     char *true_label = mklabel();
     char *done_label = mklabel();
@@ -450,7 +464,7 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     tmpvar_t cond_var = gen_node(node->left, code_list, tmpnum, layer + 1);
     // CODE_CMP returns 0 if equ, for comparation nodes, they return 0 if
     // condition is true
-    push_code(code_list, CODE_CMP, TMP(cond_var), IMM("0"), EMPTY);
+    push_code(code_list, CODE_CMP, TMP(cond_var), IMM(0), EMPTY);
     
     char *true_label = mklabel();
     char *done_label = mklabel();
@@ -518,7 +532,7 @@ list_t gen_intercode(astnode_t *ast) {
   // scan the ast and find global definitions
   put_global_var_inits(&codes, ast, ast->syms);
   tmpvar_t tmpv = make_tmpvar(8);
-  CODE(&codes, CODE_ALLOC_TMP, TMP(tmpv), IMM("8"), EMPTY);
+  CODE(&codes, CODE_ALLOC_TMP, TMP(tmpv), IMM(8), EMPTY);
   CODE(&codes, CODE_FUNCCALL, ADDR("main"), TMP(tmpv), EMPTY);
   CODE(&codes, CODE_RETURN, EMPTY, EMPTY, EMPTY);
   CODE(&codes, CODE_DEF_FUNC_END, EMPTY, EMPTY, EMPTY);
@@ -526,15 +540,11 @@ list_t gen_intercode(astnode_t *ast) {
   return codes;
 }
 // create an operand from an integer.
-operand_t imm_num(int value) {
-  operand_t op={.type=OPERAND_IMMEDIATE};
-  cstring_t cstr = create_string();
-  string_sprintf(&cstr, "%d", value);
-  op.value = cstr.data;
-  // we just use cstring here for convenience. no need to free it.  
+operand_t imm_str(char* value) {
+  operand_t op={.type=OPERAND_IMMEDIATE,.num_value=atoi(value)};
   return op;
 }
-static char* codefmt(operand_t op) {
+char* codeop_fmt(operand_t op) {
   switch (op.type) {
   case OPERAND_TMPVAR: {
     cstring_t cstr = create_string();
@@ -546,12 +556,18 @@ static char* codefmt(operand_t op) {
     string_sprintf(&cstr, "[tmp@%d+%zu]", op.tmpvalue.index, op.offset);
     return cstr.data;
     break;
-  }    
+  }
+  case OPERAND_IMMEDIATE: {
+    cstring_t cstr = create_string();
+    string_sprintf(&cstr, "%llu", op.num_value);
+    return cstr.data;
+  }
   default:
     return op.value;
-  }  
+  }
+
 }
 void intercode_tostr(char *buf, intercode_t *code) {
   sprintf(buf, "%s \t\t%s,\t%s,\t%s", codetype_tostr(code->type),
-          codefmt(code->op1), codefmt(code->op2), codefmt(code->op3));  
+          codeop_fmt(code->op1), codeop_fmt(code->op2), codeop_fmt(code->op3));  
 }
