@@ -146,9 +146,8 @@ stackframe_t create_stackframe(){
   return stk;  
 }
 size_t grow_stack(stackframe_t *stk,size_t size){
-  size_t offset = stk->end;
   stk->end += size;
-  return offset;  
+  return stk->end;  
 }
 void shrink_stack(stackframe_t *stk, size_t size) {
   assert(stk->end >= size);
@@ -197,7 +196,8 @@ size_t stackframe_add_tmpvar(stackframe_t *stk, tmpvar_t tmpvar){
   size_t local_offset = grow_stack(stk, tmpvar.size);
   localpos.is_tmpvar = 1;  
   localpos.size = tmpvar.size;
-  localpos.stack_offset = local_offset;  
+  localpos.stack_offset = local_offset;
+  localpos.tmpvar_index = tmpvar.index;  
   append(&stk->locals, &localpos);
   return local_offset;
 }
@@ -213,7 +213,7 @@ void stackframe_remove_tmpvar(stackframe_t *stk, int tmpvar_index){
 long long stackframe_get_tmpvar_offset(stackframe_t *stk, int tmpvar_index){  
   for (size_t i=0; i < stk->locals.len; ++i) {
     stackpos_local_t *local = list_get(&stk->locals, i);
-    if (local->tmpvar_index==tmpvar_index) {
+    if (local->is_tmpvar==1&&local->tmpvar_index==tmpvar_index) {
       return local->stack_offset;
     }
   }

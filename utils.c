@@ -211,6 +211,7 @@ static int log_parts_switch[] = {
     [PARSER_OUTPUT] = 0,
     [LEXER_OUTPUT] = 0,
     [ASMGEN_ALLOCREG] = 1,
+    [ASMGEN_ALLOCLOCAL] = 1,
     
 };
 void do_log(int level, int part, const char* fmt, ...){

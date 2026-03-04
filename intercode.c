@@ -464,7 +464,7 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     tmpvar_t cond_var = gen_node(node->left, code_list, tmpnum, layer + 1);
     // CODE_CMP returns 0 if equ, for comparation nodes, they return 0 if
     // condition is true
-    push_code(code_list, CODE_CMP, TMP(cond_var), IMM(0), EMPTY);
+    push_code(code_list, CODE_CMP, TMP(cond_var), IMM(1), EMPTY);
     
     char *true_label = mklabel();
     char *done_label = mklabel();
@@ -540,8 +540,14 @@ list_t gen_intercode(astnode_t *ast) {
   return codes;
 }
 // create an operand from an integer.
-operand_t imm_str(char* value) {
-  operand_t op={.type=OPERAND_IMMEDIATE,.num_value=atoi(value)};
+operand_t imm_str(char *value) {
+  long long realv = atoi(value);
+  // for char we take the char part
+  /* TODO: special chars */
+  if (value&&value[0]=='\'') {
+    realv=value[1];
+  }
+  operand_t op={.type=OPERAND_IMMEDIATE,.num_value=realv};
   return op;
 }
 char* codeop_fmt(operand_t op) {

@@ -81,3 +81,10 @@ char* get_reg(list_t *regs,tmpvar_t varname);
 char *amd64_gen(list_t *intercodes,platform_info_t arch);
 char *aarch64_gen(list_t *intercodes, platform_info_t arch);
 
+#define ASM(fmt, ...)				\
+  do {						\
+    char *line = malloc(128);			\
+    assert(line);				\
+    snprintf(line, 128, fmt, ##__VA_ARGS__);	\
+    list_append(list_asm, &line);		\
+  } while (0);
