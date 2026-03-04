@@ -12,23 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-char *codeop_fmt(operand_t op) {
-  switch (op.type) {
-  case OPERAND_TMPVAR: {
-    cstring_t cstr = create_string();
-    string_sprintf(&cstr, "tmp@%d", op.tmpvalue.index);
-    return cstr.data;
-  }
-  case OPERAND_OFFSET: {
-    cstring_t cstr = create_string();
-    string_sprintf(&cstr, "[tmp@%d+%zu]", op.tmpvalue.index, op.offset);
-    return cstr.data;
-    break;
-  }    
-  default:
-    return op.value;
-  }
-}
+
 void print_intercode(intercode_t* code){
   printf("%s \t\t%s,\t%s,\t%s\n", codetype_tostr(code->type), codeop_fmt(code->op1),codeop_fmt(code->op2),codeop_fmt(code->op3));
 }
@@ -49,16 +33,19 @@ int main(int argc, char** argv){
   char* input=NULL;
   char* output="a.asm";
   char* arch_str="amd64";
-  char* abi_str="systemv";
+  char* abi_str="default";
   for (int i=1; i<argc; i++) {
     char* arg=argv[i];
     if(strcmp(arg, "-h")==0){
       // help
       printf("usage: GMS_COMPILER -i <input_file> [args..]\n");
       printf("available arguments:\n");
-      printf("-o <output_file>\t set the output file name. Set to a.asm if not provided.\n"
-	     "-m <arch>\t select the target architecture\n"
-	     "--abi <abi>\t select the ABI to use\n");
+      printf("-o <output_file>\t set the output file name. Set as a.asm if not "
+             "provided.\n"
+             "-m <arch>\t select the target architecture\n"
+             "\tavailable architectures: amd64 aarch64\n"
+             "--abi <abi>\t select the ABI to use\n"
+	     "\tavailable ABIs: systemv microsoft aarch64");
     }else if (strcmp(arg, "-i")==0) {
       i++;
       if(i>=argc){
@@ -105,15 +92,30 @@ int main(int argc, char** argv){
   }else{
     printf("error: unknown architecture format\n");
     return 0;
-  }  
-  abitype_t abi=(arch==ARCH_AARCH64?ABI_AARCH64:ABI_SYSTEMV);
-  if(strcmp(abi_str, "systemv")==0){
-    abi=ABI_SYSTEMV;
-  }else if(strcmp(abi_str, "microsoft")==0){
-    abi=ABI_MICROSOFT;
-  }else if(strcmp(abi_str, "aarch64")==0){
-    abi=ABI_AARCH64;
-  }else{
+  }
+  abitype_t abi = (arch == ARCH_AARCH64 ? ABI_AARCH64 : ABI_SYSTEMV);
+  switch (arch) {
+  case ARCH_AMD64: {
+    if(strcmp(abi_str, "systemv")==0||strcmp(abi_str, "default")==0){
+      abi=ABI_SYSTEMV;
+    }else if(strcmp(abi_str, "microsoft")==0){
+      abi=ABI_MICROSOFT;
+    }else{
+      printf("error: unknown abi under this architecture\n");
+      return 0;
+    }
+    break;
+  }
+  case ARCH_AARCH64: {
+    if (strcmp(abi_str, "default")==0||strcmp(abi_str, "aarch64")==0) {
+      abi=ABI_AARCH64;
+    }else{
+      printf("error: unknown abi under this architecture\n");
+      return 0;
+    }
+    break;
+  }
+  default:
     printf("error: unknown abi format\n");
     return 0;
   }

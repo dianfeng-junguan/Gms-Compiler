@@ -64,6 +64,7 @@ typedef enum {
 typedef enum {
   OPERAND_EMPTY = 0,
   OPERAND_IMMEDIATE,
+  OPERAND_STRING,
   OPERAND_TMPVAR,
   OPERAND_VALUE,
   OPERAND_ADDRESS,
@@ -78,8 +79,14 @@ typedef struct _tmpvar_t{
 }tmpvar_t;
 typedef struct {
   operandtype_t type;
-  char *value;
-  tmpvar_t tmpvalue;
+  union {
+    // sym name
+    char *value;
+    // numerical value (usually immediate)
+    long long num_value;
+    // tmpvar    
+    tmpvar_t tmpvalue;
+  };
   size_t offset;
 }operand_t;
 typedef struct {
@@ -94,12 +101,14 @@ void push_code(list_t *code_list, intercode_type_t code_type, operand_t op1,
                operand_t op2, operand_t op3);
 void intercode_tostr(char* buf, intercode_t *ic);
 const char *codetype_tostr(intercode_type_t type);
+char* codeop_fmt(operand_t op);
 // the operand is an immediate value.
 #define IMM(immediate)                                                         \
-  ((operand_t){.type = OPERAND_IMMEDIATE, .value = immediate})
-operand_t imm_num(int value);
+  ((operand_t){.type = OPERAND_IMMEDIATE, .num_value = immediate})
+/// create an immediate operand from string
+operand_t imm_str(char* strv);
 // the operand is a tmpvar. this usually means it will be implemented by registers.
-#define TMP(tmpvar) ((operand_t){.type = OPERAND_TMPVAR, .value=NULL, .tmpvalue = tmpvar})
+#define TMP(tmpvar) ((operand_t){.type = OPERAND_TMPVAR, .tmpvalue = tmpvar})
 // the operand is stored in a mem area. this could be variables or something
 // which you wanna take value of.
 // this will be interpreted like this in nasm:
@@ -112,6 +121,7 @@ operand_t imm_num(int value);
 // in assembler, such operand will be interpreted as like this in nasm:
 // mov rax,address
 #define ADDR(address) ((operand_t){.type = OPERAND_ADDRESS, .value = (address)})
+#define STRCONST(str) ((operand_t){.type= OPERAND_STRING, .value=str})
 // the operand is directly pasted to the assembly code.
 #define KEEP(content) ((operand_t){.type=OPERAND_KEEP,.value=(content)})
 #define EMPTY ((operand_t){0})

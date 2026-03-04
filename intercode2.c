@@ -42,21 +42,20 @@ list_t process_intercode(list_t* ic1){
       // put it to data section
       operand_t op2=code->op2;
       if(op2.type==OPERAND_EMPTY){
-	op2=IMM("0");
+	op2=IMM(0);
       }
       CODE(&ic2, CODE_GLOBAL_VAR_DATA, code->op1, op2, EMPTY);
     }
     /* extract string constant to the data section */
-#define EXTRACT_STRCONST(v)			\
-    if(v&&v[0]=='\"'){				\
-      char* strconst=make_tmp_label("const__");	\
-      CODE(&ic2, CODE_DATA, ADDR(strconst), IMM(v), EMPTY);	\
-      myfree(v);				\
-      v=strconst;				\
+#define EXTRACT_STRCONST(op)						\
+    if(op.type==OPERAND_STRING){					\
+      char* strconst=make_tmp_label("const__");				\
+      CODE(&ic2, CODE_DATA, ADDR(strconst), KEEP(op.value), EMPTY);	\
+      op.value=strconst;						\
     }
-    EXTRACT_STRCONST(code->op1.value);
-    EXTRACT_STRCONST(code->op2.value);
-    EXTRACT_STRCONST(code->op3.value);
+    EXTRACT_STRCONST(code->op1);
+    EXTRACT_STRCONST(code->op2);
+    EXTRACT_STRCONST(code->op3);
     
   }
   // this macro is to see whether the operand is a tmpvar or immediate number.

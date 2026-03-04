@@ -190,8 +190,8 @@ static str_op_pair_t operators[] = {
     {"/", DIV},
     {"%", MOD},
 
-    {"<", GREATER},
-    {">", LESS},
+    {"<", LESS},
+    {">", GREATER},
 
     {"=", ASSIGN},
     {"&", BITAND},

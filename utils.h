@@ -130,7 +130,8 @@ typedef enum {
   SEMATIC_CHECK,
   PARSER_OUTPUT,
   LEXER_OUTPUT,
-  ASMGEN_ALLOCREG  
+  ASMGEN_ALLOCREG,  
+  ASMGEN_ALLOCLOCAL
 } log_parts;
 
 #endif

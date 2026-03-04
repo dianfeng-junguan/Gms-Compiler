@@ -7,13 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "intercode.h"
-#define ASM(fmt, ...)				\
-  do {						\
-    char *line = malloc(64);			\
-    assert(line);				\
-    snprintf(line, 64, fmt, ##__VA_ARGS__);	\
-    list_append(list_asm, &line);		\
-  } while (0);
 static size_t stk_argsz = 0;
 static int tmplabelid=0;
 static char* format_operand(operand_t op,list_t* tmpv_table, char** regs, stackframe_t* sf){
@@ -23,11 +16,9 @@ static char* format_operand(operand_t op,list_t* tmpv_table, char** regs, stackf
       tmpvar_alloc_info_t *pair = list_get(tmpv_table, i);
       if (pair->tmpv_index != TMPVAR_INDEX_NULL && op.tmpvalue.index == pair->tmpv_index) {
         if (pair->onstack) {
-          char tmpvname[20];
-          sprintf(tmpvname, "tmp@%d", pair->tmpv_index);
-          size_t offset = get_local_offset(sf, tmpvname);
+          size_t offset = stackframe_get_tmpvar_offset(sf, op.tmpvalue.index);
 	  cstring_t cstr = create_string();
-	  string_sprintf(&cstr, "[fp,#-%zu]", offset);
+	  string_sprintf(&cstr, "[fp,#-0x%lx]", offset);
 	  return cstr.data;
         } else {
 	  return regs[pair->reg];
@@ -37,23 +28,19 @@ static char* format_operand(operand_t op,list_t* tmpv_table, char** regs, stackf
     //cry_errorf(SENDER_ASMGEN, ((filepos_t){0,0}), "tmpvar used before alloced");
     break;
   }
+  case OPERAND_STRING: {
+    return op.value;
+  }
   case OPERAND_IMMEDIATE: {
-    cstring_t cstr;
-    if (strncmp(op.value, "const", 5) == 0) {
-      cstr = string_from(op.value);
-    } else if(op.value&&op.value[0]!='\"'){
-      cstr = create_string();      
-      string_sprintf(&cstr, "#%s", op.value);
-    }else{
-      cstr = string_from(op.value);
-    }
+    cstring_t cstr = create_string();      
+    string_sprintf(&cstr, "#%d", op.num_value);
     return cstr.data;
     break;
   }
   case OPERAND_VALUE:{
     size_t off = get_local_offset(sf, op.value);
     cstring_t cstr = create_string();
-    string_sprintf(&cstr, "[fp,#-%zu]", off);
+    string_sprintf(&cstr, "[fp,#-0x%lx]", off);
     return cstr.data;
   }    
   case OPERAND_OFFSET: {
@@ -62,9 +49,9 @@ static char* format_operand(operand_t op,list_t* tmpv_table, char** regs, stackf
       if (pair->tmpv_index > 0 && op.tmpvalue.index == pair->tmpv_index) {
 	cstring_t cstr = create_string();
         if (pair->onstack) {
-	  string_sprintf(&cstr, "[fp,#-%zu]",pair->offset-op.offset);
+	  string_sprintf(&cstr, "[fp,#-0x%lx]",pair->offset-op.offset);
 	}else{
-	  string_sprintf(&cstr, "[%s,#%zu]",regs[pair->reg],op.offset);
+	  string_sprintf(&cstr, "[%s,#0x%lx]",regs[pair->reg],op.offset);
 	}
 	return cstr.data;
       }
@@ -95,7 +82,7 @@ void aarch64_mov(list_t *list_asm, operand_t op1, operand_t op2,
     ASM("str %s,%s\n",formatted_op2,formatted_op1);
   }else if(op2.type==OPERAND_ADDRESS){
     ASM("mov %s,%s\n",formatted_op1,formatted_op2);
-  }else if(op2.type==OPERAND_IMMEDIATE&&strncmp(formatted_op2, "const", 5)==0){
+  }else if(op2.type==OPERAND_STRING){
     // string constant operands are converted to labels
     ASM("adrp %s,%s@PAGE\n", formatted_op1, formatted_op2);
     ASM("add %s,%s,%s@PAGEOFF\n", formatted_op1, formatted_op1, formatted_op2);    
@@ -142,9 +129,22 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       ASM(".global %s\n",op1);
       ASM("%s:\n",op1);
       ASM("str fp,[sp,#-16]!\nmov fp,sp\n");
-      for (size_t  i=0; i<abi.callee_saved_regs_num; i++) {
-	ASM("str %s,[sp,#-16]!\n", abi.callee_saved_regs[i]);
-	grow_stack(&current_sf, 16);
+      char *r1,*r2;
+      for (size_t i = 0; i < abi.callee_saved_regs_num; i++) {
+        if (i % 2 == 0) {
+	  if (i>0) {
+            ASM("stp %s,%s,[sp,#-16]!\n", r1, r2);
+	    grow_stack(&current_sf, 16);
+	  }
+	  r1=abi.callee_saved_regs[i];
+	}else{
+	  r2=abi.callee_saved_regs[i];
+        }
+	
+      }
+      if (abi.callee_saved_regs_num%2!=0) {
+        ASM("str %s,[sp,#-16]!\n", r1);
+	grow_stack(&current_sf, 8);        
       }
       // collect ALLOC_LOCALs
       size_t i = iter;
@@ -154,26 +154,43 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
 	if (code->type==CODE_DEF_FUNC_END) {
 	  break;
         } else if (code->type == CODE_ALLOC_LOCAL) {
-	  size_t sz=atoi(code->op2.value);
-          add_local(&current_sf, code->op1.value, sz);
-          local_tot_sz += sz;          
+	  size_t sz=code->op2.num_value;
+          size_t offset = add_local(&current_sf, code->op1.value, sz);
+          do_log(VERBOSE, ASMGEN_ALLOCLOCAL, "variable %s at [fp-0x%lx] size 0x%lx\n",
+                 code->op1.value, offset,sz);
+          local_tot_sz += sz;
 	}
 	i++;
       }
+      // align up tot_sz to multiplies of 16
+      size_t aligned_local_tot_sz = (local_tot_sz + 16) & ~15;
+      size_t delta = aligned_local_tot_sz - local_tot_sz;
+      grow_stack(&current_sf, delta);
       // alloc stack for locals      
-      ASM("sub sp,sp,#%zu\n",local_tot_sz);
+      ASM("sub sp,sp,#0x%lx\n",aligned_local_tot_sz);
       break;
     }
     case CODE_RETURN: {
-      if (op1) {
+      if (intercode->op1.type!=OPERAND_EMPTY) {
 	if (intercode->op1.type==OPERAND_TMPVAR) {
 	  ASM("mov x0,%s\n",op1);
 	}else{
 	  ASM("ldr x0,%s\n",op1);
 	}
       }
-      for (size_t i = 0; i < abi.callee_saved_regs_num; i++) {
-	ASM("ldr %s,[sp],#16\n",abi.callee_saved_regs[abi.callee_saved_regs_num-1-i]);
+      char *r1,*r2;
+      if (abi.callee_saved_regs_num%2!=0) {
+	ASM("ldr %s,[sp],#16\n",abi.callee_saved_regs[abi.callee_saved_regs_num-1]);
+      }
+      for (size_t i = 0; i < abi.callee_saved_regs_num-1; i++) {
+	if (i%2==0) {
+          r1 = abi.callee_saved_regs[abi.callee_saved_regs_num - 2 - i];
+	  if (i>0) {
+	    ASM("ldp %s,%s,[sp],#16\n",r2,r1);
+	  }
+	}else{
+	  r2=abi.callee_saved_regs[abi.callee_saved_regs_num-2-i];
+	}
       }
       ASM("mov sp,fp\nldr fp,[sp],#16\nret\n");
       break;
@@ -190,7 +207,7 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       //size_t var_size=atoi(op2);
       //*stack_subbase=*stack_subbase+var_size;
       //size_t offset=add_local(&current_sf, op1, var_size);
-      //ASM(".set %s .dword [fp-%zu]\n", op1, offset);    
+      //ASM(".set %s .dword [fp-0x%lx]\n", op1, offset);    
       break;
     }
     case CODE_ALLOC_TMP: {
@@ -202,7 +219,7 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       if (r == -1 || tmpsz > 8) {
 	// need to alloc stack space
 	tmpv_alloc_stack(tmpvar_table, intercode->op1.tmpvalue, &current_sf);
-	ASM("sub sp,sp,#%zu\n",intercode->op1.tmpvalue.size);
+	ASM("sub sp,sp,#0x%lx\n",intercode->op1.tmpvalue.size);
       }
     
       //ASM(".set %s %s\n",op1,reg);
@@ -210,8 +227,8 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
     }    
 #define TWOOP(codenoprefix,ins)			\
       case CODE_##codenoprefix: {		\
-	ASM("%s %s,%s,%s\n",#ins,op2,		\
-	    op3,op1);				\
+	ASM("%s %s,%s,%s\n",#ins,op3,		\
+	    op1,op2);				\
 	break;					\
       }
     
@@ -221,15 +238,16 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       TWOOP(DIV, udiv);
       TWOOP(BITAND, and);
       TWOOP(BITOR, orr);
-      TWOOP(BITNOT, neg);
+    case CODE_BITNOT: {
+      ASM("mvn %s,%s\n",op1,op2);
+      break;
+    }
     case CODE_REFER: {
       switch (intercode->op2.type) {
       case OPERAND_TMPVAR:
       case OPERAND_OFFSET: {
-	char tmpvname[32];        
 	// a large tmpvar which is stored in the stack
-	sprintf(tmpvname, "tmp@%d", intercode->op2.tmpvalue.index);
-        long long offset = get_local_offset(&current_sf, tmpvname);
+        long long offset = stackframe_get_tmpvar_offset(&current_sf, intercode->op2.tmpvalue.index);
         assert(offset != -1);
 	ASM("sub %s,fp,#%llu\n",op1,offset);
         break;
@@ -246,15 +264,22 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       }
       break;
     }
-    case CODE_DEFER:{
-      ASM("mov %s,%s\nldr %s,[%s]\n",op1,op2,op1,op1);
+    case CODE_DEFER: {
+      if (intercode->op2.type==OPERAND_VALUE) {
+	ASM("sub %s,fp,#0x%lx\n",op1,(size_t)get_local_offset(&current_sf, intercode->op2.value));
+      } else {
+	ASM("mov %s,%s\nldr %s,[%s]\n",op1,op2,op1,op1);
+      }
       break;
     }
-    
+
     case CODE_MOD: {
+      // op3=op1%op2=op1-(op1/op2)*op2
       //a%b=a-(a/b)*b
-      ASM("str x0,[sp,#-16]!\nudiv x0,%s,%s\nmsub %s,x0,%s,%s\nldr x0,[sp],#16\n",
-	  op1,op2, op3,op2,op1);
+      // a/b
+      ASM("udiv %s,%s,%s\n", op3, op1, op2);
+      // a-(a/b)*b
+      ASM("msub %s,%s,%s,%s\n", op3, op3, op2, op1);      
       break;
     }
     case CODE_CMP: {
@@ -269,10 +294,10 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       ASM(".extern %s\n",op1);
       break;
     }
-#define JMP(codenoprefix,ins)			\
-      case CODE_##codenoprefix: {		\
+#define JMP(codenoprefix,ins)		\
+      case CODE_##codenoprefix: {	\
 	ASM("%s %s\n",#ins,op1);	\
-	break;					\
+	break;				\
       }
       JMP(JE,beq);
       JMP(JNE,bne);
@@ -286,8 +311,6 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       break;
     }
     case CODE_M2M:
-      ASM("str x0,[sp,#-16]!\nmov x0,%s\nmov %s,x0\nldr x0,[sp],#16\n",op2, op1);
-      break;
     case CODE_LOAD: 
     case CODE_STORE:
     case CODE_MOV: {
@@ -295,27 +318,31 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       operand_t *sop1 = &intercode->op1;
       operand_t *sop2 = &intercode->op2;
       // intercoder needs to make sure such large MOVs has at least one tmpvar      
-      if (sop1->type == OPERAND_TMPVAR && sop1->tmpvalue.size > 8 ||
-          sop2->type == OPERAND_TMPVAR && sop2->tmpvalue.size > 8) {
+      if ((sop1->type == OPERAND_TMPVAR && sop1->tmpvalue.size > 8) ||
+          (sop2->type == OPERAND_TMPVAR && sop2->tmpvalue.size > 8)) {
         // this is a large MOV. break it down to smaller ones
         size_t objsz = sop1->type==OPERAND_TMPVAR?sop1->tmpvalue.size:sop2->tmpvalue.size;
         // the two operands must be in the stack
-        cstring_t op1name = sop1->value?string_from(sop1->value):create_string();
-        cstring_t op2name = sop2->value?string_from(sop2->value):create_string();
-        if (sop1->type==OPERAND_TMPVAR) {
-          string_sprintf(&op1name, "tmp@%d", sop1->tmpvalue.index);
-        }
-        if (sop2->type == OPERAND_TMPVAR) {          
-          string_sprintf(&op2name, "tmp@%d", sop2->tmpvalue.index);
+	long long offset1 = -1;        
+        long long offset2 = -1;
+	if (sop1->type==OPERAND_TMPVAR) {
+	  offset1 = stackframe_get_tmpvar_offset(&current_sf, sop1->tmpvalue.index);
+	}else{
+	  offset1 = get_local_offset(&current_sf, sop1->value);
 	}
-        size_t offset1 = get_local_offset(&current_sf, op1name.data);
-        size_t offset2 = get_local_offset(&current_sf, op2name.data);
+        if (sop2->type==OPERAND_TMPVAR) {
+	  offset2 = stackframe_get_tmpvar_offset(&current_sf, sop2->tmpvalue.index);
+	}else{
+	  offset2 = get_local_offset(&current_sf, sop2->value);
+	}
+	assert(offset1!=-1l&&offset2!=-1l);
+        
         ASM("str x1,[sp,#-16]!\nstr x2,[sp,#-16]!\n");
         ASM("str x3,[sp,#-16]!\nstr x4,[sp,#-16]!\n");
-        ASM("sub x2,fp,#%zu\nsub x3,fp,#%zu\n", offset2, offset1);
-        ASM("mov x4,#%zu\n", objsz);
+        ASM("sub x2,fp,#0x%lx\nsub x3,fp,#0x%lx\n", (size_t)offset2, (size_t)offset1);
+        ASM("mov x4,#0x%lx\n", objsz);
         ASM("tmplabel_memcpy%d:\n", tmplabelid++);
-        ASM("ldrb w1,[sp,x2]\nstrb w1,[sp,x3]\n");
+        ASM("ldrb w1,[x2]\nstrb w1,[x3]\n");
         ASM("add x2,x2,#1\nadd x3,x3,#1\n");
         ASM("sub x4,x4,#1\n");
 	ASM("cbnz x4,tmplabel_memcpy%d\n",tmplabelid-1);
@@ -365,7 +392,7 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       for (size_t i=0; i < stk_argsz/16; ++i) {
 	// we copy the part that overflows registers reversely
 	// since the earlier pushargs are from left to right
-	ASM("ldr %s,[sp,#%zu]\n",(i<abi.arg_regs_num?abi.arg_regs[i]:"x0"),16*pushed_regs_num+i*16);
+	ASM("ldr %s,[sp,#0x%lx]\n",(i<abi.arg_regs_num?abi.arg_regs[i]:"x0"),16*pushed_regs_num+i*16);
 	if(i>=abi.arg_regs_num){
 	  // str the,[sp,#-16]! arg when num of args is more than arg registers
 	  ASM("str x0,[sp,#-16]!\n");
@@ -373,14 +400,14 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       }
       ASM("bl %s\n",op1);
       if(stk_argsz>16*abi.arg_regs_num){
-	ASM("add sp,sp,#%zu\n",stk_argsz-16*abi.arg_regs_num);
+	ASM("add sp,sp,#0x%lx\n",stk_argsz-16*abi.arg_regs_num);
       }
       if(op2){
         // store the return value
 	if (intercode->op2.type==OPERAND_VALUE) {
-	  ASM("ldr x0,%s\n",op2);
+	  ASM("str x0,%s\n",op2);
 	}else {
-	  ASM("mov x0,%s\n",op2);
+	  ASM("mov %s,x0\n",op2);
 	}
       }
       // restore the stacks used to pass args
@@ -390,7 +417,7 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
 	  ASM("ldr %s,[sp],#16\n",abi.caller_saved_regs[i-1]);
 	}
       }
-      ASM("add sp,sp,#%zu\n",stk_argsz);
+      ASM("add sp,sp,#0x%lx\n",stk_argsz);
       stk_argsz=0;
       break;
     }
