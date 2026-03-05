@@ -181,23 +181,26 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       ASM(".global %s\n",op1);
       ASM("%s:\n",op1);
       ASM("str fp,[sp,#-16]!\nmov fp,sp\n");
-      char *r1,*r2;
+      // we don't have to store callee_saved_regs now because we just won't
+      // use them at present
+      /*char *r1,*r2;
       for (size_t i = 0; i < abi.callee_saved_regs_num; i++) {
         if (i % 2 == 0) {
-	  if (i>0) {
+          if (i>0) {
             ASM("stp %s,%s,[sp,#-16]!\n", r1, r2);
-	    grow_stack(&current_sf, 16);
-	  }
-	  r1=abi.callee_saved_regs[i];
-	}else{
-	  r2=abi.callee_saved_regs[i];
+            grow_stack(&current_sf, 16);
+          }
+          r1=abi.callee_saved_regs[i];
+        }else{
+          r2=abi.callee_saved_regs[i];
         }
-	
+
       }
       if (abi.callee_saved_regs_num%2!=0) {
         ASM("str %s,[sp,#-16]!\n", r1);
-	grow_stack(&current_sf, 8);        
+        grow_stack(&current_sf, 8);
       }
+      */
       // collect ALLOC_LOCALs
       size_t i = iter;
       size_t local_tot_sz = 0;
@@ -230,7 +233,7 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
 	  ASM("ldr x0,%s\n",op1);
 	}
       }
-      char *r1,*r2;
+      /*char *r1,*r2;
       if (abi.callee_saved_regs_num%2!=0) {
 	ASM("ldr %s,[sp],#16\n",abi.callee_saved_regs[abi.callee_saved_regs_num-1]);
       }
@@ -243,7 +246,7 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
 	}else{
 	  r2=abi.callee_saved_regs[abi.callee_saved_regs_num-2-i];
 	}
-      }
+      }*/
       ASM("mov sp,fp\nldr fp,[sp],#16\nret\n");
       break;
     }
