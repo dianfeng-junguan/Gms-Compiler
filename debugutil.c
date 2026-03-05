@@ -18,6 +18,7 @@ const char* tokentype_tostr(tokentype_t type) {
     case EXTERN: return "EXTERN";
     case BREAK: return "BREAK";
     case CLASS: return "CLASS";
+    case INCLUDE: return "INCLUDE";
     case INT: return "INT";
     case STRING: return "STRING";
     case TYPE_KEYWORD: return "TYPE_KEYWORD";
@@ -86,6 +87,7 @@ const char* get_nodetype_str(astnode_type_t type) {
     case NODE_DECLARE_VAR: return "NODE_DECLARE_VAR";
     case NODE_DECLARE_FUNC: return "NODE_DECLARE_FUNC";
     case NODE_CLASS: return "NODE_CLASS";
+    case NODE_INCLUDE: return "NODE_INCLUDE";
     case NODE_COMMALIST: return "NODE_COMMALIST";
     case NODE_ADD: return "NODE_ADD";
     case NODE_SUB: return "NODE_SUB";

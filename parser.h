@@ -26,6 +26,7 @@ typedef enum {
   NODE_DECLARE_VAR,
   NODE_DECLARE_FUNC,
   NODE_CLASS,
+  NODE_INCLUDE,
   // expressions
 
   NODE_COMMALIST,

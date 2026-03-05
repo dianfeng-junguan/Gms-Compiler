@@ -130,6 +130,7 @@ str_tok_pair_t keywords[] = {
     {"extern", EXTERN},
     {"break", BREAK},
     {"class", CLASS},
+    {"include", INCLUDE},
 
     {"int", INT},       {"string", STRING},
 };
@@ -360,6 +361,7 @@ list_t do_lex(char *str) {
       break;
     }
   }
+  
   return tokens;
 }
 

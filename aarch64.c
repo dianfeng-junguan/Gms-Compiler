@@ -82,7 +82,9 @@ void aarch64_mov(list_t *list_asm, operand_t op1, operand_t op2,
     long long local_offset = op2.type == OPERAND_VALUE
                                  ? get_local_offset(sf, op2.value)
                                  : op2.offset;
-    assert(local_offset != -1l);
+    if(local_offset == -1l){
+      panic("asm generator cannot find offset of operand type=%d, tmpv index=%d , value=%s\n",op2.type,op2.tmpvalue.index,op2.value);
+    }
     if (local_offset>255l||local_offset<-255l) {
       // use a register to temporarily store the address 
       char *tmpreg = "x0";
