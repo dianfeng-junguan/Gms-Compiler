@@ -1,6 +1,7 @@
 #include "main.h"
 #include "stdio.h"
 #include "lexer.h"
+#include "preprocess.h"
 #include "parser.h"
 #include "sematic.h"
 #include "intercode.h"
@@ -129,8 +130,22 @@ int main(int argc, char** argv){
   size_t len=ftell(f);
   fseek(f, 0, SEEK_SET);
   char* source=malloc(len+1);
-  memset(source, 0, len+1);
-  size_t read=fread(source, len, 1, f);
+  memset(source, 0, len + 1);
+  size_t read = fread(source, len, 1, f);
+  fclose(f);
+  // get the path of the directory of the source code.
+  // we need to search for the included files based on this path.
+  char *pioneer = input+strlen(input);
+  while (pioneer>=input&&(*pioneer!='/'&&*pioneer!='\\')) {
+    pioneer--;
+  }
+  pioneer++;//include the /  
+  char *source_dir = "./";
+  if (pioneer>input) {
+    source_dir=malloc(pioneer-input+1);
+    strncpy(source_dir, input, pioneer-input);
+  }
+  source_dir[pioneer-input]='\0';
   /******************************************/
   /* if (read<1) {			    */
   /*   perror("error while reading file."); */
@@ -141,7 +156,11 @@ int main(int argc, char** argv){
   compiler_global_data_t globals;
   init_compiler_global_data(&globals);
   init_sematic();
-  list_t tokens=do_lex(source);
+  list_t tokens = do_lex(source);
+  if (!preprocess_tokens(&tokens,source_dir)) {
+    free(source);    
+    return -1;
+  }  
   // free the source
   free(source);
 #ifdef DEBUG

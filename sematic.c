@@ -344,16 +344,21 @@ bool sym_undef_trigger(astnode_t *node) {
   return node->node_type==NODE_IDENTIFIER;
 }
 bool sym_undef_checker(astnode_t *node,  compiler_global_data_t *globals) {
-  if (!node->syms) return false;
-  for (size_t i=0; i < node->syms->table.len; ++i) {
-    symbol_t* sym=list_get(&node->syms->table, i);
-    assert(node->value);
-    if(strcmp(node->value, sym->name)==0){
-      LOG(VERBOSE, "identifier found defined symbol %s, type %d\n",
-          node->value, sym->sym_type);
-      node->value_type=sym->sym_type;
-      return true;
+  if (!node->syms)
+    return false;
+  symbol_table_t *symtab = node->syms;  
+  while (symtab) {
+    for (size_t i=0; i < symtab->table.len; ++i) {
+      symbol_t* sym=list_get(&symtab->table, i);
+      assert(node->value);
+      if(strcmp(node->value, sym->name)==0){
+	LOG(VERBOSE, "identifier found defined symbol %s, type %d\n",
+	    node->value, sym->sym_type);
+	node->value_type=sym->sym_type;
+	return true;
+      }
     }
+    symtab=symtab->parent;
   }
   cry_errorf(SENDER_SEMATIC, node->position, "undefined variable:%s\n", node->value);
   return false;
@@ -407,6 +412,10 @@ bool funccall_arg_checker(astnode_t *node,  compiler_global_data_t *globals) {
       }
     }
   }
+  // infer type of this funccall
+  symbol_t *func = find_symbol(node->syms, node->left->value);
+  assert(func);
+  node->value_type = func->return_type;  
   return true;
 }
 bool exismem_trigger(astnode_t *node) {
@@ -526,6 +535,7 @@ bool otherschk_checker(astnode_t* node , compiler_global_data_t *globals) {
   return (node->left?check_node(node->left, globals):true)&&
     (node->right?check_node(node->right, globals):true);
 }
+
 bool objdef_typeinf_trigger(astnode_t *node) {
   return node->node_type==NODE_CLASSFILL;
 }
@@ -589,7 +599,7 @@ bool class_def_checker(astnode_t *node,  compiler_global_data_t *globals) {
   free_list(&tovisit);
   return true;
 }
-static rule_t sematic_preprocess_list[] = {    
+static rule_t sematic_preprocess_list[] = {
     {.name = "keyword type infer",
      .trigger = kwtype_trigger,
      .checker = kwtype_checker},
@@ -601,7 +611,7 @@ static rule_t sematic_preprocess_list[] = {
      .checker = class_def_checker},
     {.name = "object definition type infer",
      .trigger = objdef_typeinf_trigger,
-     .checker = objdef_typeinf_checker},    
+     .checker = objdef_typeinf_checker}    
 };
 
 static rule_t sematic_rules[] = {

@@ -705,6 +705,7 @@ astnode_t* parse_class(list_t* collected, list_t* tokens, size_t *iter, filepos_
   astnode_t *classnode = create_node(NODE_CLASS, idnode, members, NULL, pos);
   return classnode;
 }
+
 astnode_t* parse_return_noexpr(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
   astnode_t *returnnode =
       create_node(NODE_RETURN, NULL, NULL, NULL, pos);

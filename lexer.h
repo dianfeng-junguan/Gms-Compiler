@@ -16,6 +16,7 @@ typedef enum {
   EXTERN,
   BREAK,
   CLASS,
+  INCLUDE,
   // type
   INT,
   STRING,
