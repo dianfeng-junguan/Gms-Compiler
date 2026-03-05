@@ -66,6 +66,7 @@ void remove_local(stackframe_t *stk, char *name);
 size_t stackframe_add_tmpvar(stackframe_t *stk, tmpvar_t tmpvar);
 void stackframe_remove_tmpvar(stackframe_t *stk, int tmpvar_index);
 long long stackframe_get_tmpvar_offset(stackframe_t *stk, int tmpvar_index);
+tmpvar_alloc_info_t* get_tmpv_alloc(list_t *tmpv_table, int tmpv_index);
 /// get the stack offset of the allocated varname. if the var cannot be found, it returns -1.
 long long get_local_offset(stackframe_t* stk, char* name);
 

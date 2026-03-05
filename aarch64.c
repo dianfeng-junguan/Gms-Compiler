@@ -70,16 +70,68 @@ static char* format_operand(operand_t op,list_t* tmpv_table, char** regs, stackf
   use this function.
  */
 void aarch64_mov(list_t *list_asm, operand_t op1, operand_t op2,
-                 char *formatted_op1, char *formatted_op2) {
+                 char *formatted_op1, char *formatted_op2, stackframe_t *sf,
+                 list_t *tmpv_table, char** regs
+                 ) {
 #define OPERAND_ISMEM(operand) (operand.type==OPERAND_VALUE||operand.type==OPERAND_OFFSET)  
   // check if both operands are mems (invalid)
   if (OPERAND_ISMEM(op1)&&OPERAND_ISMEM(op2)) {
     ASM("str x0,[sp,#-16]!\nldr x0,%s\nstr x0,%s\nldr x0,[sp],#16\n",
         formatted_op2, formatted_op1);
-  } else if (op1.type==OPERAND_TMPVAR&&OPERAND_ISMEM(op2)) {
-    ASM("ldr %s,%s\n",formatted_op1,formatted_op2);
-  }else if (OPERAND_ISMEM(op1)&&op2.type==OPERAND_TMPVAR) {
+  } else if (op1.type == OPERAND_TMPVAR && OPERAND_ISMEM(op2)) {
+    long long local_offset = op2.type == OPERAND_VALUE
+                                 ? get_local_offset(sf, op2.value)
+                                 : op2.offset;
+    assert(local_offset != -1l);
+    if (local_offset>255l||local_offset<-255l) {
+      // use a register to temporarily store the address 
+      char *tmpreg = "x0";
+      if (strcmp(tmpreg, formatted_op1)==0) {
+	tmpreg = "x1";
+      }
+      // just use the op1 register as it will be overwritten by ldr-ed value
+      // anyway
+      if (op2.type==OPERAND_OFFSET) {
+        // op2 is register offset
+	// get the base register        
+	tmpvar_alloc_info_t* tinfo=get_tmpv_alloc(tmpv_table, op2.tmpvalue.index);
+        tmpreg = regs[tinfo->reg];
+        ASM("add %s,%s,#0x%llx\n", formatted_op1, tmpreg, local_offset);
+      } else {
+	// OPERAND_VALUE, op2 is fp offset        
+	ASM("sub %s,fp,#0x%llx\n", formatted_op1, local_offset);
+      }
+      ASM("ldr %s,[%s]\n", formatted_op1, tmpreg);
+    }else{
+      ASM("ldr %s,%s\n",formatted_op1,formatted_op2);
+    }
+  } else if (OPERAND_ISMEM(op1) && op2.type == OPERAND_TMPVAR) {
+  long long local_offset = op1.type == OPERAND_VALUE
+    ? get_local_offset(sf, op1.value)
+    : op1.offset;
+  assert(local_offset != -1l);
+  if (local_offset>255l||local_offset<-255l) {
+    // use a register to temporarily store the address 
+    char *tmpreg = "x0";
+    if (strcmp(tmpreg, formatted_op2)==0) {
+      tmpreg = "x1";
+    }
+    ASM("str %s,[sp,#-16]!\n",tmpreg);
+    if (op1.type==OPERAND_OFFSET) {
+      // op1 is register offset
+      // get the base register        
+      tmpvar_alloc_info_t* tinfo=get_tmpv_alloc(tmpv_table, op1.tmpvalue.index);
+      // store the offset result into tmpreg
+      ASM("add %s,%s,#0x%llx\n", tmpreg, regs[tinfo->reg], local_offset);
+    } else {
+      // OPERAND_VALUE, op1 is fp offset        
+      ASM("sub %s,fp,#0x%llx\n", tmpreg, local_offset);
+    }
+    ASM("str %s,[%s]\n", formatted_op2, tmpreg);
+    ASM("ldr %s,[sp],#16\n",tmpreg);
+  }else{
     ASM("str %s,%s\n",formatted_op2,formatted_op1);
+  }      
   }else if(op2.type==OPERAND_ADDRESS){
     ASM("mov %s,%s\n",formatted_op1,formatted_op2);
   }else if(op2.type==OPERAND_STRING){
@@ -350,7 +402,7 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
         ASM("ldr x2,[sp],#16\nldr x1,[sp],#16\n");
 	break;
       }
-      aarch64_mov(list_asm, intercode->op1, intercode->op2, op1, op2);
+      aarch64_mov(list_asm, intercode->op1, intercode->op2, op1, op2, &current_sf, tmpvar_table, abi.caller_saved_regs);
       break;
     }
     case CODE_SCOPE_END: {
