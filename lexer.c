@@ -114,7 +114,7 @@ bool number_after(char *str, list_t *tokens, filepos_t pos) {
 
 bool word_begin(char c) { return isalpha(c) || c == '_'; }
 bool word_allowed(char c, char *start, size_t offset) {
-  return isalpha(c) || isdigit(c) || c == '_' || c=='*' ;
+  return isalpha(c) || isdigit(c) || c == '_';
 }
 typedef struct {
   char *str;
@@ -132,7 +132,10 @@ str_tok_pair_t keywords[] = {
     {"class", CLASS},
     {"include", INCLUDE},
 
-    {"int", INT},       {"string", STRING},
+    {"int", INT},
+    {"string", STRING},
+    {"void", VOID}, 
+    
 };
 bool word_after(char *str, list_t *tokens, filepos_t pos) {
   // check if it is keyword
@@ -144,18 +147,6 @@ bool word_after(char *str, list_t *tokens, filepos_t pos) {
       tok = create_token(keywords[i].tok, str, pos);
       f = true;
       break;
-    } else if(strlen(str)>strlen(keywords[i].str)) {
-      for (size_t j=0; j < strlen(str); ++j) {
-        if ((j < strlen(keywords[i].str) && keywords[i].str[j] == str[j]) ||
-            str[j]=='*') {
-        } else {
-	  goto done; 
-	}
-      }
-      // it is a pointer
-      f=true;
-      tok = create_token(TYPE_KEYWORD, str, pos);
-    done:;
     }
   }
   if (!f) {
@@ -248,19 +239,28 @@ bool operator_after(char *str, list_t *tokens, filepos_t pos) {
 
 bool separator_begin(char c) {
   return c == ';' || c == ':' || c == '{' || c == '}' ||
-         c == '(' || c == ')' || c == ',';
+         c == '(' || c == ')' || c == ',' || c == '[' || c == ']';
 }
 bool separator_allowed(char c, char *start, size_t offset) {
   if (offset >= 1) {
     // we want single-char separator
     return false;
   }
-  return c == ';' || c == ':' || c == '{' || c == '}' ||
-         c == '(' || c == ')' || c == ',';
+  return c == ';' || c == ':' || c == '{' || c == '}' || c == '(' || c == ')' ||
+         c == ',' || c == '[' || c == ']';
+  
 }
 static str_sep_pair_t separators[] = {
-    {";", SEMICOLON}, {":", COLON},      {"{", OPENBRACE}, {"}", CLOSEBRACE},
-    {"(", OPENPAREN}, {")", CLOSEPAREN}, {",", COMMA}};
+    {";", SEMICOLON},
+    {":", COLON},
+    {"{", OPENBRACE},
+    {"}", CLOSEBRACE},
+    {"(", OPENPAREN},
+    {")", CLOSEPAREN},
+    {",", COMMA},
+    {"[", OPEN_SQUAREBRACKET},
+    {"]", CLOSE_SQUAREBRACKET},
+    };
 bool separator_after(char *str, list_t *tokens, filepos_t pos) {
   // separator is easy.
   for (size_t i = 0; i < sizeof(separators) / sizeof(str_sep_pair_t); ++i) {

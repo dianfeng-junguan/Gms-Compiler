@@ -211,11 +211,23 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     break;
   }
   case NODE_ASSIGN: {
-    assert(node->left && node->left->value && node->right);
+    assert(node->left && node->right);
     char *assigned = node->left->value;
     tmpvar_t rhs = gen_node(node->right, code_list, tmpnum, layer + 1);
-    push_code(code_list, CODE_MOV, VALUE(assigned), TMP(rhs), EMPTY);
-    
+    if (node->left->node_type == NODE_DEFER) {
+      
+      // deal with left defer
+      assert(node->left->right);
+      tmpvar_t assigned_tmpv = make_tmpvar(8);
+      push_code(code_list, CODE_ALLOC_TMP, TMP(assigned_tmpv), IMM(8), EMPTY);
+      // get the value of the deferred var
+      push_code(code_list, CODE_MOV, TMP(assigned_tmpv),
+                VALUE(node->left->right->value), EMPTY);
+      // use offsettmp to set the pointed mem      
+      push_code(code_list, CODE_MOV, OFFSETTMP(assigned_tmpv,0), TMP(rhs), EMPTY);
+    }else{
+      push_code(code_list, CODE_MOV, VALUE(assigned), TMP(rhs), EMPTY);
+    }
     break;
   }
   case NODE_DEFINITION: {
@@ -256,9 +268,10 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     TWOOP_INTERCODE(BITOR);
 
   case NODE_REFER: {
-    // refer is restricted to identifiers so we can directly use the right node 
+    // refer is restricted to identifiers so we can directly use the right node
     tmpvar_t res = make_tmpvar(8);
-    push_code(code_list, CODE_REFER, TMP(res), ADDR(node->right->value), EMPTY);
+    push_code(code_list, CODE_ALLOC_TMP, TMP(res), IMM(8), EMPTY);
+    push_code(code_list, CODE_REFER, TMP(res), VALUE(node->right->value), EMPTY);
     return res;
     break;
   }

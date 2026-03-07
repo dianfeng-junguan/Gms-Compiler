@@ -21,6 +21,7 @@ const char* tokentype_tostr(tokentype_t type) {
     case INCLUDE: return "INCLUDE";
     case INT: return "INT";
     case STRING: return "STRING";
+    case VOID: return "VOID";
     case TYPE_KEYWORD: return "TYPE_KEYWORD";
     case WHITESPACE: return "WHITESPACE";
     case COMMA: return "COMMA";
@@ -30,6 +31,8 @@ const char* tokentype_tostr(tokentype_t type) {
     case DOUBLE_QUOTE: return "DOUBLE_QUOTE";
     case OPENPAREN: return "OPENPAREN";
     case CLOSEPAREN: return "CLOSEPAREN";
+    case OPEN_SQUAREBRACKET: return "OPEN_SQUAREBRACKET";
+    case CLOSE_SQUAREBRACKET: return "CLOSE_SQUAREBRACKET";
     case OPENBRACE: return "OPENBRACE";
     case CLOSEBRACE: return "CLOSEBRACE";
     case ADD: return "ADD";
@@ -100,6 +103,7 @@ const char* get_nodetype_str(astnode_type_t type) {
     case NODE_BITOR: return "NODE_BITOR";
     case NODE_XOR: return "NODE_XOR";
     case NODE_PROPERTY: return "NODE_PROPERTY";
+    case NODE_INDEX: return "NODE_INDEX";
     case NODE_EQUAL: return "NODE_EQUAL";
     case NODE_GREATER: return "NODE_GREATER";
     case NODE_LESS: return "NODE_LESS";
@@ -111,6 +115,9 @@ const char* get_nodetype_str(astnode_type_t type) {
     case NODE_OR: return "NODE_OR";
     case NODE_NOT: return "NODE_NOT";
     case NODE_FUNCCALL: return "NODE_FUNCCALL";
+    case NODE_POINTEROF: return "NODE_POINTEROF";
+    case NODE_ARRAYOF: return "NODE_ARRAYOF";
+    case NODE_ARRAYFILL: return "NODE_ARRAYFILL";
     case NODE_ARGLIST: return "NODE_ARGLIST";
     case NODE_ARGPAIR: return "NODE_ARGPAIR";
     case NODE_KEYVALUE_PAIR: return "NODE_KEYVALUE_PAIR";

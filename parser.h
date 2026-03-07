@@ -45,8 +45,10 @@ typedef enum {
   // visit property of object
 
   NODE_PROPERTY,
+  // array[index]
+  NODE_INDEX,
   // comparator
-  
+
   NODE_EQUAL,
   NODE_GREATER,
   NODE_LESS,
@@ -60,6 +62,11 @@ typedef enum {
   NODE_OR,
   NODE_NOT,
   NODE_FUNCCALL,
+  // type expression
+  NODE_POINTEROF,
+  NODE_ARRAYOF,
+  // filling the array  
+  NODE_ARRAYFILL,
   // others
   NODE_ARGLIST,
   NODE_ARGPAIR,

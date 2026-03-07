@@ -20,6 +20,7 @@ typedef enum {
   // type
   INT,
   STRING,
+  VOID,
   TYPE_KEYWORD,
   // whitespace
   WHITESPACE,
@@ -31,6 +32,8 @@ typedef enum {
   DOUBLE_QUOTE,
   OPENPAREN,
   CLOSEPAREN,
+  OPEN_SQUAREBRACKET,
+  CLOSE_SQUAREBRACKET,
   OPENBRACE,
   CLOSEBRACE,
   // operator

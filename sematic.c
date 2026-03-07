@@ -174,7 +174,8 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
   }
   return true;
 }
-
+/// find the pointer type of the given type. if there is no such type in the
+/// type table, add one to it.
 int find_refer_type_of(symbol_type_index_t ind) {
   symbol_type_t *stype = list_get(&type_table, ind);
   if (!stype)
@@ -186,13 +187,13 @@ int find_refer_type_of(symbol_type_index_t ind) {
     stype = list_get(&type_table, stype->point_to);
     ptrl++;
   }
-  for (int i = 0; i < sizeof(type_table); ++i) {
+  for (int i = 0; i < type_table.len; ++i) {
     symbol_type_t* iter=list_get(&type_table, i);
     if (iter->point_to==ptrto&&iter->pointer_level==ptrl+1) {
       return i;
     }
   }
-  char *newtypename = malloc(strlen(stype->name + ptrl + 2));
+  char *newtypename = malloc(strlen(stype->name) + ptrl + 2 );
   strcpy(newtypename, stype->name);
   size_t rawtype_namelen=strlen(stype->name);
   for (int i=0; i < ptrl+1; ++i) {
@@ -200,9 +201,9 @@ int find_refer_type_of(symbol_type_index_t ind) {
   }
   newtypename[rawtype_namelen+ptrl]='\0';
   symbol_type_t newptrtype = {
-      .name = newtypename, .point_to = ptrto, .pointer_level = ptrl+1};
+    .name = newtypename, .point_to = ptrto, .pointer_level = ptrl+1, .size=8};
   append(&type_table, &newptrtype);
-  return type_table.element_size;
+  return type_table.len-1;
 }
 int find_defer_type_of(symbol_type_index_t ind) {  
   symbol_type_t *stype = list_get(&type_table, ind);
@@ -218,7 +219,7 @@ int find_defer_type_of(symbol_type_index_t ind) {
     stype = list_get(&type_table, stype->point_to);
     ptrl++;
   }
-  for (int i = 0; i < sizeof(type_table); ++i) {
+  for (int i = 0; i < type_table.len; ++i) {
     symbol_type_t* iter=list_get(&type_table, i);
     if (iter->point_to==ptrto&&iter->pointer_level==ptrl-1) {
       return i;
@@ -232,22 +233,24 @@ int find_defer_type_of(symbol_type_index_t ind) {
   }
   newtypename[rawtype_namelen+ptrl-1]='\0';
   symbol_type_t newptrtype = {
-      .name = newtypename, .point_to = ptrto, .pointer_level = ptrl-1};
+    .name = newtypename, .point_to = ptrto, .pointer_level = ptrl-1, .size=8};
   append(&type_table, &newptrtype);
-  return type_table.element_size;
+  return type_table.len-1;
 }
 bool is_pointer_type(symbol_type_index_t ind) {
   symbol_type_t* iter=list_get(&type_table, ind);
   assert(iter);
   return iter->pointer_level>0;
 }
+/// get the type index judging by the NODE_TYPEKW
 int get_type_from_typekwnode(astnode_t *typekwnode) {
   char *typestr = typekwnode->value;
   if (!typestr) {
     panic("typekw node has NO VALUE STR");
   }
   char *ptr = typestr;
-  while (*ptr&&*(ptr++)!='*') {
+  while (*ptr && *ptr != '*' && *ptr != '[') {
+    ptr++;
   }
   char *proto = malloc(ptr - typestr + 1);
   memcpy(proto, typestr, ptr - typestr);
@@ -255,7 +258,7 @@ int get_type_from_typekwnode(astnode_t *typekwnode) {
   int ptrlvl = 0;
   while (*ptr&&*(ptr++) == '*') {
     ptrlvl++;
-  }
+  }  
   for (int i = 0; i < type_table.len; ++i) {
     symbol_type_t *symtype=list_get(&type_table,i);
     if (strcmp(proto, symtype->name) == 0) {
