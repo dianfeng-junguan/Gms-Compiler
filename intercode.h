@@ -70,6 +70,7 @@ typedef enum {
   OPERAND_ADDRESS,
   OPERAND_KEEP,
   OPERAND_OFFSET,
+  OPERAND_OFFSET_VALUE_TMP,
 } operandtype_t;
 
 typedef struct _tmpvar_t{
@@ -87,7 +88,11 @@ typedef struct {
     // tmpvar    
     tmpvar_t tmpvalue;
   };
-  size_t offset;
+  union{
+    size_t offset;
+    tmpvar_t offsettmp;
+  };
+    
 }operand_t;
 typedef struct {
   intercode_type_t type;
@@ -115,7 +120,10 @@ operand_t imm_str(char* strv);
 // mov rax,[value]
 #define VALUE(v) ((operand_t){.type = OPERAND_VALUE, .value = (v)})
 // the operand calculates the address by offseting the address of tmp by off and take the value as the operand
-#define OFFSETTMP(tmp,off) ((operand_t){.type = OPERAND_OFFSET, .tmpvalue = (tmp), .offset=off})
+#define OFFSETTMP(tmp, off)                                                    \
+  ((operand_t){.type = OPERAND_OFFSET, .tmpvalue = (tmp), .offset = off})
+// the operand use a symbol as base address and the value of tmpvar as offset
+#define OFFSETVT(v, offtmp) ((operand_t){.type= OPERAND_OFFSET_VALUE_TMP, .value=(v), .offsettmp=(offtmp)})
 // the operand is the pointer to a certain mem area. it uses the address of the
 // passed argument. this is used to jump to the address
 // in assembler, such operand will be interpreted as like this in nasm:

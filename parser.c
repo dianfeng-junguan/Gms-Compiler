@@ -133,7 +133,7 @@ astnode_t *prefix_handler_openparen(token_t *lefttoken, list_t *tokens,
 
 astnode_t *infix_handler_opensquarebracket(astnode_t *left, list_t *tokens,
                                    size_t *iter) {
-  size_t backupiter=*iter+1;
+  size_t backupiter=*iter;
   astnode_t *inner = parse_expr(tokens, &backupiter, 0);
   if (peek_check_token(tokens, backupiter, CLOSE_SQUAREBRACKET)) {
     backupiter++;

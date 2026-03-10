@@ -24,21 +24,81 @@ typedef struct {
   // if this is a class, it records the members  
   list_t members;
 } class_type_t;
-int get_type_from_typekwnode(astnode_t *typekwnode);
+int get_type_from_typetree(astnode_t *typekwnode);
 size_t while_depth = 0;
 int function_rettype = -1;
 bool in_function = false;
 list_t *current_func_arglist = NULL;
 list_t type_table = {0};
+#define INTRINSIC_TYPE_INDEX_VOID 0
+#define INTRINSIC_TYPE_INDEX_INT 1
+#define INTRINSIC_TYPE_INDEX_STRING 2
 static symbol_type_t intrinsic_types[] = {
-    {.name = "void", .size = 0},
-    {.name = "int", .size = 8},
-    {.name = "string", .size = 8},// string is actually just a pointer
+  [INTRINSIC_TYPE_INDEX_VOID]={.name = "void", .size = 0},
+  [INTRINSIC_TYPE_INDEX_INT]={.name = "int", .size = 8},
+  [INTRINSIC_TYPE_INDEX_STRING]={.name = "string", .size = 8},// string is actually just a pointer
     
 };
 bool check_node(astnode_t* node, compiler_global_data_t* globals);
 bool check_arglist(astnode_t* commalist, list_t* arglist, size_t index, filepos_t pos);
 
+/// compare the two tree by structure and node type.
+static bool compare_tree(astnode_t* a, astnode_t *b){
+  if ((!a && b) || (a && !b)) {
+    // one is NULL
+    return false;
+  } else if (!a && !b) {
+    // it's ok if both NULL    
+    return true;
+  }
+
+  if (!compare_tree(a->left, b->left) ||
+      !compare_tree(a->right, b->right)) {    
+    return false;
+  }
+  if (a->node_type==NODE_TYPEKW&&b->node_type==NODE_TYPEKW) {
+    return strcmp(a->value, b->value)==0;
+  }
+  return a->node_type == b->node_type;
+}
+/// clone a tree
+static astnode_t* clone_tree(astnode_t *tree){
+  if (!tree) {
+    return NULL;
+  }
+  astnode_t *newone = malloc(sizeof(astnode_t));
+  assert(newone);
+  memcpy(newone, tree, sizeof(astnode_t));
+  newone->left = clone_tree(tree->left);
+  newone->right = clone_tree(tree->right);
+  if (tree->value) {
+    cstring_t cstr = string_from(tree->value);
+    newone->value = cstr.data;
+  }
+  return newone;
+}
+static size_t calc_typetree_size(astnode_t *tree) {
+  if (tree->node_type==NODE_ARRAYOF) {
+    size_t element_size = calc_typetree_size(tree->left);    
+    size_t element_number = atoi(tree->right->value);
+    return element_size * element_number;    
+  }else if (tree->node_type==NODE_POINTEROF) {
+    return 8;
+  }else if (tree->node_type==NODE_TYPEKW) {
+    // intrinsic types
+    if (strcmp(tree->value, "int")==0) {
+      return 8;
+    }else if (strcmp(tree->value, "string")==0) {
+      return 8;
+    }else if (strcmp(tree->value, "char")==0) {
+      return 1;
+    } else if (strcmp(tree->value, "void") == 0) {      
+      return 1;
+    }
+  }
+  // unknown
+  return 8;
+}
 symbol_t create_symbol(char* name, symbol_kind_t type, int value_type){
   return (symbol_t){
     .name=clone_str(name),
@@ -78,16 +138,16 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
   switch (node->node_type) {
   case NODE_DECLARE_FUNC:
     name = NODE_FUNCDECL_ID(node)->value;
-    vartype=get_type_from_typekwnode(NODE_FUNCDECL_TYPEKW(node));    
+    vartype=get_type_from_typetree(NODE_FUNCDECL_TYPEKW(node));    
     break;    
   case NODE_DECLARE_VAR:
     name = NODE_VARDECL_ID(node)->value;
-    vartype = get_type_from_typekwnode(NODE_VARDECL_TYPEKW(node));    
+    vartype = get_type_from_typetree(NODE_VARDECL_TYPEKW(node));    
     break;    
   case NODE_FUNCTION:
     name = NODE_FUNC_ID(node)->value;
     // get the return type
-    vartype=get_type_from_typekwnode(NODE_FUNC_TYPEKW(node));
+    vartype=get_type_from_typetree(NODE_FUNC_TYPEKW(node));
     break;
   case NODE_DEFINITION:
     // check right node first to infer its value type    
@@ -96,7 +156,7 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
     }
     name = NODE_DEF_ID(node)->value;
     vartype = NODE_DEF_TYPEKW(node)
-                  ? get_type_from_typekwnode(NODE_DEF_TYPEKW(node))
+                  ? get_type_from_typetree(NODE_DEF_TYPEKW(node))
                   : node->right->value_type;
     // check the types of rexpr and type annotation
     if(node->right->value_type!=vartype){
@@ -107,7 +167,7 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
     break;
   case NODE_ARGPAIR:
     name = NODE_ARGPAIR_ID(node)->value;
-    vartype = get_type_from_typekwnode(NODE_ARGPAIR_TYPEKW(node));    
+    vartype = get_type_from_typetree(NODE_ARGPAIR_TYPEKW(node));    
     break;    
   default:panic("redef met uncopable node type")break;
   }  
@@ -180,102 +240,70 @@ int find_refer_type_of(symbol_type_index_t ind) {
   symbol_type_t *stype = list_get(&type_table, ind);
   if (!stype)
     return -1;
-  int ptrl = stype->pointer_level;
-  int ptrto= ind;
-  while(stype->pointer_level>0){
-    ptrto = stype->point_to;    
-    stype = list_get(&type_table, stype->point_to);
-    ptrl++;
-  }
-  for (int i = 0; i < type_table.len; ++i) {
-    symbol_type_t* iter=list_get(&type_table, i);
-    if (iter->point_to==ptrto&&iter->pointer_level==ptrl+1) {
+  // construct type tree
+  astnode_t newtt = {.node_type = NODE_POINTEROF, .left = stype->type_tree, 0};
+  for (size_t i=0; i<type_table.len; i++) {
+    symbol_type_t *st = list_get(&type_table, i);
+    if (compare_tree(st->type_tree, &newtt)) {
+      // found
       return i;
     }
   }
-  char *newtypename = malloc(strlen(stype->name) + ptrl + 2 );
-  strcpy(newtypename, stype->name);
-  size_t rawtype_namelen=strlen(stype->name);
-  for (int i=0; i < ptrl+1; ++i) {
-    newtypename[rawtype_namelen+i]='*';
-  }
-  newtypename[rawtype_namelen+ptrl]='\0';
-  symbol_type_t newptrtype = {
-    .name = newtypename, .point_to = ptrto, .pointer_level = ptrl+1, .size=8};
-  append(&type_table, &newptrtype);
-  return type_table.len-1;
+  // no such type. create one
+  symbol_type_t newtype = {
+      .type_tree = clone_tree(&newtt), .size = calc_typetree_size(&newtt), 0};
+  append(&type_table, &newtype);
+  return type_table.len - 1;
 }
 int find_defer_type_of(symbol_type_index_t ind) {  
   symbol_type_t *stype = list_get(&type_table, ind);
-  if (!stype)
+  if (!stype||stype->type_tree->node_type!=NODE_POINTEROF)
     return -1;
-  int ptrl = stype->pointer_level;
-  if(ptrl==0){
-    return -1;
-  }
-  int ptrto= ind;
-  while(stype->pointer_level>0){
-    ptrto = stype->point_to;    
-    stype = list_get(&type_table, stype->point_to);
-    ptrl++;
-  }
-  for (int i = 0; i < type_table.len; ++i) {
-    symbol_type_t* iter=list_get(&type_table, i);
-    if (iter->point_to==ptrto&&iter->pointer_level==ptrl-1) {
+  // construct type tree
+  // remove the POINTEROF node  
+  astnode_t *newtt = stype->type_tree->left;
+  for (size_t i=0; i<type_table.len; i++) {
+    symbol_type_t *st = list_get(&type_table, i);
+    if (compare_tree(st->type_tree, newtt)) {
+      // found
       return i;
     }
   }
-  char *newtypename = malloc(strlen(stype->name + ptrl + 1));
-  strcpy(newtypename, stype->name);
-  size_t rawtype_namelen=strlen(stype->name);
-  for (int i=0; i < ptrl-1; ++i) {
-    newtypename[rawtype_namelen+i]='*';
-  }
-  newtypename[rawtype_namelen+ptrl-1]='\0';
-  symbol_type_t newptrtype = {
-    .name = newtypename, .point_to = ptrto, .pointer_level = ptrl-1, .size=8};
-  append(&type_table, &newptrtype);
-  return type_table.len-1;
+  // no such type. create one
+  symbol_type_t newtype = {
+      .type_tree = clone_tree(newtt), .size = calc_typetree_size(newtt), 0};
+  append(&type_table, &newtype);
+  return type_table.len - 1;
 }
 bool is_pointer_type(symbol_type_index_t ind) {
   symbol_type_t* iter=list_get(&type_table, ind);
   assert(iter);
-  return iter->pointer_level>0;
+  return iter->type_tree->node_type==NODE_POINTEROF;
 }
-/// get the type index judging by the NODE_TYPEKW
-int get_type_from_typekwnode(astnode_t *typekwnode) {
-  char *typestr = typekwnode->value;
-  if (!typestr) {
-    panic("typekw node has NO VALUE STR");
-  }
-  char *ptr = typestr;
-  while (*ptr && *ptr != '*' && *ptr != '[') {
-    ptr++;
-  }
-  char *proto = malloc(ptr - typestr + 1);
-  memcpy(proto, typestr, ptr - typestr);
-  proto[ptr - typestr] = '\0';  
-  int ptrlvl = 0;
-  while (*ptr&&*(ptr++) == '*') {
-    ptrlvl++;
-  }  
-  for (int i = 0; i < type_table.len; ++i) {
-    symbol_type_t *symtype=list_get(&type_table,i);
-    if (strcmp(proto, symtype->name) == 0) {
-      if (ptrlvl == 0) {
-	free(proto);
+/// get the type index judging from the type expression tree
+int get_type_from_typetree(astnode_t *typekwnode) {
+  // first check if it is a class
+  if (typekwnode->node_type==NODE_TYPEKW) {
+    for (size_t i=0; i<type_table.len; i++) {
+      symbol_type_t *type = list_get(&type_table, i);
+      if (strcmp(type->name, typekwnode->value)==0) {
 	return i;
-      }else{
-        symbol_type_t ptrtype = {.name = clone_str(typestr),
-                                 .pointer_level = ptrlvl};
-        append(&type_table, &ptrtype);
-	free(proto);
-	return type_table.len-1;
       }
     }
+  } 
+  // see if it matches the existing items
+  for (size_t i=0; i<type_table.len; i++) {
+    symbol_type_t *type = list_get(&type_table, i);
+    if (compare_tree(type->type_tree, typekwnode)) {
+      return i;
+    }
   }
-  panic("type or type pointed to not found ");
-  return -1;
+  // no existing one. add it to the table.
+  symbol_type_t newtype = {.type_tree = clone_tree(typekwnode), .size = 8,0};
+  // calc size
+  newtype.size = calc_typetree_size(typekwnode);
+  append(&type_table, &newtype);
+  return type_table.len - 1;  
 }
 bool symtab_setup(astnode_t *node,symbol_table_t *symbols, 
                           compiler_global_data_t *globals) {
@@ -306,42 +334,77 @@ bool kwtype_trigger(astnode_t *node) {
   return node->node_type==NODE_TYPEKW;
 }
 bool kwtype_checker(astnode_t *node,  compiler_global_data_t *globals) {
-    int argtype = get_type_from_typekwnode(node);
+    int argtype = get_type_from_typetree(node);
     node->value_type = argtype;
     return true;
 }
 
 bool ctypeinf_trigger(astnode_t *node) {
-  return node->node_type==NODE_CONSTANT;
+  return node->node_type==NODE_CONSTANT||node->node_type==NODE_ARRAYFILL;
 }
-bool ctypeinf_checker(astnode_t *node,  compiler_global_data_t *globals) {
-    switch (node->extra_info) {
-    case CONSTANT_CHAR: 
-    case CONSTANT_NUMBER: {
-      for (int i=0; i < type_table.len; ++i) {
-        symbol_type_t *stype = list_get(&type_table, i);
-        if (strcmp(stype->name,"int")==0) {
-          node->value_type = i;
-	  break;
-	}
-      }
-      break;
+size_t count_element(astnode_t* commalist){
+  size_t n = 0;
+  if (commalist->left&&commalist->left->node_type==NODE_CONSTANT) {
+    n++;
+  }else if (commalist->left) {
+    n+=count_element(commalist->left);
+  }
+  if (commalist->right&&commalist->right->node_type==NODE_CONSTANT) {
+    n++;
+  }else if (commalist->right) {
+    n+=count_element(commalist->right);
+  }
+  return n;
+}
+bool ctypeinf_checker(astnode_t *node, compiler_global_data_t *globals) {
+  if (node->node_type==NODE_ARRAYFILL) {
+    // get element type
+    astnode_t *el = node->left;
+    while (el->node_type==NODE_COMMALIST) {
+      el = el->right;
     }
-    case CONSTANT_STRING:
-      for (int i=0; i < type_table.len; ++i) {
-        symbol_type_t *stype = list_get(&type_table, i);
-        if (strcmp(stype->name,"string")==0) {
-          node->value_type = i;
-	  break;
-	}
+    symbol_type_index_t element_type = el->value_type;
+    // get size
+    size_t n = count_element(node->left);
+    // construct array type tree
+    symbol_type_t *stype = list_get(&type_table, element_type);
+    assert(stype);
+    astnode_t *elett = stype->type_tree;
+    cstring_t cstr = create_string();
+    string_sprintf(&cstr, "%d", n);
+    astnode_t elen = {.node_type = NODE_CONSTANT, .value = cstr.data, .value_type=INTRINSIC_TYPE_INDEX_INT};
+    astnode_t tt = {.node_type = NODE_ARRAYOF, .left = elett, .right = &elen};
+    for (size_t i=0; i<type_table.len; i++) {
+      symbol_type_t *st = list_get(&type_table, i);
+      if (compare_tree(st->type_tree, &tt)) {
+        node->value_type = i;
+        return true;        
       }
-      LOG(VERBOSE, "sematic: constant_string set\n");      
-      break;
-    default:
-      cry_errorf(SENDER_SEMATIC, node->position, "met unsupported constant type extra info:%zu\n",node->extra_info);
-      break;
     }
+    symbol_type_t newt = {.type_tree = clone_tree(&tt),
+                          .size = calc_typetree_size(&tt),
+                          .element_size = stype->size,
+                          0};    
+    append(&type_table, &newt);
+    node->value_type = type_table.len - 1;
+    do_log(VERBOSE, SEMATIC_CHECK, "ctypeinf arrayfill eletype=%zu, n=%d\n",element_type,n);
     return true;
+  }
+  switch (node->extra_info) {
+  case CONSTANT_CHAR:
+  case CONSTANT_NUMBER: {
+    node->value_type = INTRINSIC_TYPE_INDEX_INT;
+    break;
+  }
+  case CONSTANT_STRING:
+    node->value_type = INTRINSIC_TYPE_INDEX_STRING;
+    do_log(VERBOSE, SEMATIC_CHECK,"sematic: constant_string set\n");
+    break;      
+  default:
+    cry_errorf(SENDER_SEMATIC, node->position, "met unsupported constant type extra info:%zu\n",node->extra_info);
+    break;
+  }
+  return true;
 }
 bool sym_undef_trigger(astnode_t *node) {
   return node->node_type==NODE_IDENTIFIER;
@@ -547,7 +610,7 @@ bool objdef_typeinf_checker(astnode_t *node,  compiler_global_data_t *globals){
   char *classname = NODE_CLASSFILL_CLASSNAME(node)->value;
   for (size_t i=0; i < type_table.len; ++i) {
     symbol_type_t *stype = list_get(&type_table, i);
-    if (strcmp(stype->name, classname) == 0) {
+    if (stype->name&&strcmp(stype->name, classname) == 0) {
       node->value_type = i;
       return true;     
     }
@@ -558,9 +621,14 @@ bool objdef_typeinf_checker(astnode_t *node,  compiler_global_data_t *globals){
 bool class_def_trigger(astnode_t *node) {
   return node->node_type == NODE_CLASS;
 }
-
 void init_sematic(){
   init_list(&type_table, 10, sizeof(symbol_type_t));
+  astnode_t *void_tree=create_node(NODE_TYPEKW,NULL,NULL,"void",(filepos_t){0});
+  astnode_t *int_tree=create_node(NODE_TYPEKW,NULL,NULL,"int",(filepos_t){0});
+  astnode_t *string_tree=create_node(NODE_TYPEKW,NULL,NULL,"string",(filepos_t){0});
+  intrinsic_types[INTRINSIC_TYPE_INDEX_VOID].type_tree = void_tree;
+  intrinsic_types[INTRINSIC_TYPE_INDEX_INT].type_tree = int_tree;
+  intrinsic_types[INTRINSIC_TYPE_INDEX_STRING].type_tree = string_tree;
   for (int i = 0; i < sizeof(intrinsic_types) / sizeof(symbol_type_t); i++) {
     append(&type_table, &intrinsic_types[i]);
   }
@@ -585,7 +653,7 @@ bool class_def_checker(astnode_t *node,  compiler_global_data_t *globals) {
       astnode_t *idnode = subnode->left;
       astnode_t *typenode = subnode->right;
       name_type_pair_t member = {.name = clone_str(idnode->value),
-                                 .type = get_type_from_typekwnode(typenode)};
+                                 .type = get_type_from_typetree(typenode)};
       symbol_type_t *stype = list_get(&type_table, member.type);
       class_size += stype->size;      
       append(&class_type.members, &member);
@@ -596,6 +664,7 @@ bool class_def_checker(astnode_t *node,  compiler_global_data_t *globals) {
     i++;
   }
   class_type.size = class_size;
+  class_type.type_tree = clone_tree(node);  
   do_log(VERBOSE, SEMATIC_CHECK, "class %s size=%zu\n",class_type.name,class_size);
   append(&type_table, &class_type);
   LOG(VERBOSE, "class type registered:%s\n",class_type.name);
