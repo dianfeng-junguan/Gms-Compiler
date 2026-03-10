@@ -125,10 +125,12 @@ void do_log(int level, int part, const char* fmt, ...);
 #define LOG(level, fmt, ...)
 #define LOGERR(level, sender, pos, fmt, ...)
 #endif
+#define ALIGNUP(v,alignment) ((v+alignment-1)&~(alignment-1))
 typedef enum {
   INTERCODE_ALLOCSYM,
   SEMATIC_CHECK,
   PARSER_OUTPUT,
+  PARSER_OUTPUTTREE,
   LEXER_OUTPUT,
   ASMGEN_ALLOCREG,  
   ASMGEN_ALLOCLOCAL

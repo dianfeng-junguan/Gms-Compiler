@@ -171,7 +171,9 @@ int main(int argc, char** argv){
   }
 #endif
   astnode_t *asttree=do_parse(&tokens);
-
+  if (PARSER_OUTPUTTREE) {
+    print_node(asttree, 0);
+  }
   if (!asttree || !(do_sematic(asttree,&globals))) {
     print_node(asttree, 0);
     printf("compilation failed\n");

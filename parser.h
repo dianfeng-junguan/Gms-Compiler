@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <stddef.h>
 typedef enum {
   NODE_NONE = 0,
   // this is usally used when a node has more than 2 subnodes.
@@ -45,8 +46,10 @@ typedef enum {
   // visit property of object
 
   NODE_PROPERTY,
+  // array[index]
+  NODE_INDEX,
   // comparator
-  
+
   NODE_EQUAL,
   NODE_GREATER,
   NODE_LESS,
@@ -60,6 +63,11 @@ typedef enum {
   NODE_OR,
   NODE_NOT,
   NODE_FUNCCALL,
+  // type expression
+  NODE_POINTEROF,
+  NODE_ARRAYOF,
+  // filling the array  
+  NODE_ARRAYFILL,
   // others
   NODE_ARGLIST,
   NODE_ARGPAIR,
@@ -85,13 +93,14 @@ typedef struct{
   char *name;
   symbol_type_index_t type;
 }name_type_pair_t;
-
+typedef struct _astnode_t astnode_t;
 typedef struct {  
   // name of this type  
   char *name;
   // memsize it takes up. class will add up the sizes of the members but the
-  // final size depends on the memory alignment chosen.  
+  // final size depends on the memory alignment chosen.
   size_t size;
+  unsigned long long hash;
   union {
     // if this is a class, it records the members
     /*
@@ -116,7 +125,12 @@ typedef struct {
   // point_to=int*, pointer_level=2, so the type will be char***.
   // well but actually it will put all pointer levels to pointer_level
   // to avoid any * in point_to.
-  int point_to;  
+  int point_to;
+  
+  // use to compare type trees
+  astnode_t *type_tree;
+  // for array type  
+  size_t element_size;
 } symbol_type_t;
 int symtypcmp(int a, int b);
 typedef struct _astnode_t{
@@ -159,7 +173,8 @@ typedef struct{
 astnode_t *do_parse(list_t *tokens);
 
 const char* get_nodetype_str(astnode_type_t type);
-
+astnode_t *create_node(astnode_type_t type, astnode_t *left, astnode_t *right,
+                       char *value, filepos_t position);
 void free_node(astnode_t *node);
 void free_symbol(symbol_t *sym);
 void free_all_nodes();

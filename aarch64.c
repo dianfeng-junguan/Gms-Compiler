@@ -269,11 +269,13 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
     }
     case CODE_ALLOC_TMP: {
       size_t tmpsz = intercode->op1.tmpvalue.size;
+      
       int r=0;
       if (tmpsz<=8) {
 	r = tmpv_alloc_reg(tmpvar_table, intercode->op1.tmpvalue, abi.callee_saved_regs_num);      
       }
       if (r == -1 || tmpsz > 8) {
+	intercode->op1.tmpvalue.size=ALIGNUP(intercode->op1.tmpvalue.size, 16);
 	// need to alloc stack space
 	tmpv_alloc_stack(tmpvar_table, intercode->op1.tmpvalue, &current_sf);
 	ASM("sub sp,sp,#0x%lx\n",intercode->op1.tmpvalue.size);

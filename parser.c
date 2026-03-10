@@ -103,8 +103,21 @@ astnode_t* handler_addsub(astnode_type_t type,astnode_t* lhs, astnode_t* rhs){
 PREFIX_SINGOP(add, ADD);
 PREFIX_SINGOP(sub, SUB);
 PREFIX_SINGOP(refer, REFER);
-PREFIX_SINGOP(defer, DEFER);
+PREFIX_SINGOP(defer, DEFER)
 
+astnode_t *prefix_handler_openbrace(token_t *lefttoken, list_t *tokens,
+                                    size_t *iter) {
+  size_t backupiter = *iter + 1;
+  // commalist  
+  astnode_t *inner = parse_expr(tokens, &backupiter, 0);
+  if (peek_check_token(tokens, backupiter, CLOSEBRACE)) {
+    backupiter++;
+    *iter=backupiter;
+    return create_node(NODE_ARRAYFILL, inner, NULL, NULL, lefttoken->position);
+  }
+  cry_error(SENDER_PARSER, "missing }", lefttoken->position);
+  return NULL;
+}
 astnode_t *prefix_handler_openparen(token_t *lefttoken, list_t *tokens,
                                     size_t *iter) {
   size_t backupiter=*iter+1;
@@ -118,6 +131,18 @@ astnode_t *prefix_handler_openparen(token_t *lefttoken, list_t *tokens,
   return NULL;
 }
 
+astnode_t *infix_handler_opensquarebracket(astnode_t *left, list_t *tokens,
+                                   size_t *iter) {
+  size_t backupiter=*iter;
+  astnode_t *inner = parse_expr(tokens, &backupiter, 0);
+  if (peek_check_token(tokens, backupiter, CLOSE_SQUAREBRACKET)) {
+    backupiter++;
+    *iter=backupiter;
+    return create_node(NODE_INDEX, left, inner, NULL, left->position);
+  }
+  cry_error(SENDER_PARSER, "missing ]", left->position);
+  return NULL;
+}
 int precedences[] = {
     [ADD] = 120,
     [SUB] = 120,
@@ -133,9 +158,15 @@ int precedences[] = {
     [BITOR] = 130,
     [ASSIGN] = 105,
     [COLON] = 110, // a=1, b=2=>2
-    [DOT] = 140,
-    [COMMA] = 100,      [OPENPAREN] = 1000, [CLOSEPAREN] = 0,
-    [SEMICOLON] = 0,    [OPENBRACE] = 90};
+    [DOT] = 150,
+    [COMMA] = 100,
+    [OPENPAREN] = 1000,
+    [CLOSEPAREN] = 0,
+    [SEMICOLON] = 0,
+    [OPENBRACE] = 90,
+    [OPEN_SQUAREBRACKET] = 140,
+    [CLOSE_SQUAREBRACKET] = 10,
+    };
 static astnode_type_t mapping[] = {
     [ADD] = NODE_ADD,
     [SUB] = NODE_SUB,
@@ -251,6 +282,8 @@ prefix_handler_t prefix_handlers[50] = {
     [MUL] = prefix_handler_defer,
     [BITAND] = prefix_handler_refer,
     [OPENPAREN] = prefix_handler_openparen,
+    [OPENBRACE] = prefix_handler_openbrace,
+    
     0
 };
 infix_handler_t infix_handlers[50] = {
@@ -271,8 +304,10 @@ infix_handler_t infix_handlers[50] = {
     [NOT_EQUAL] = infix_handler_NOT_EQUAL,
     // funccall
     [OPENPAREN] = infix_handler_OPENPAREN,
-    // object def 
+    // object def
     [OPENBRACE] = infix_handler_OPENBRACE,
+    // indexing
+    [OPEN_SQUAREBRACKET] = infix_handler_opensquarebracket,
 
     [COMMA] = infix_handler_COMMA,
     // logic
@@ -402,12 +437,94 @@ astnode_t* recipe_value(list_t* tokens, size_t* iter, tokentype_t recipe[], size
   parse an type keyword from the tokens.
   returns an typekw node.
  */
-astnode_t *recipe_typekw(list_t *tokens, size_t *iter, tokentype_t recipe[], size_t recipe_len) {
-  token_t* tok=list_get(tokens, *iter);
-  astnode_t *typenode =
-      create_node(NODE_TYPEKW, NULL, NULL, tok->value, tok->position);
-  (*iter)++;
-  return typenode;
+astnode_t *recipe_typekw(list_t *tokens, size_t *iter, tokentype_t recipe[],
+                         size_t recipe_len) {
+  size_t backupiter=*iter;
+  astnode_t *typeexpr_root = NULL;
+  astnode_t *array_size_node = NULL;
+  bool met_open_sqbrk=false;
+  bool met_basictype=false;
+  while (true) {
+    token_t *tok = list_get(tokens, backupiter);
+    
+    switch (tok->token_type) {
+    case INT: 
+    case IDENTIFIER:// might be class 
+    case VOID: 
+    case STRING: {
+      // type keyword
+      if (typeexpr_root) {
+        // already has leaves. this is incorrect because typekw can only be
+        // leafnode.
+        do_log(VERBOSE, PARSER_OUTPUT,
+                   "invalid type: type keyword should be at the front of the "
+                   "type expression, rather than being after * or []\n");
+	goto freenode;
+      }
+      typeexpr_root = create_node(NODE_TYPEKW, NULL, NULL,
+                                  clone_str(tok->value), tok->position);
+      assert(typeexpr_root);      
+      met_basictype=true;
+      break;
+    }
+    case MUL: {
+      // pointer
+      if (!met_basictype) {
+        do_log(VERBOSE, PARSER_OUTPUT,
+                  "invalid type: * should be after a basic type keyword\n"
+                  );
+	goto freenode;
+      }
+      astnode_t *pointer_node =
+          create_node(NODE_POINTEROF, typeexpr_root, NULL, NULL, tok->position);
+      typeexpr_root = pointer_node;
+      break;
+    }
+    case OPEN_SQUAREBRACKET: {
+      met_open_sqbrk = true;
+      backupiter++;
+      // scan expr
+      array_size_node =
+          parse_expr(tokens, &backupiter, precedences[CLOSE_SQUAREBRACKET]);
+      if (!peek_check_token(tokens, backupiter, CLOSE_SQUAREBRACKET)) {
+	// unmatching        
+	goto freenode;
+      }
+      met_open_sqbrk = false;
+      if (!array_size_node) {
+        //cry_errorf(SENDER_PARSER, tok->position,
+        //           "invalid type: invalid expression in []\n");
+	goto freenode;
+      }
+      typeexpr_root = create_node(NODE_ARRAYOF, typeexpr_root, array_size_node, NULL, tok->position);      
+      break;
+    }
+    default:
+      do_log(VERBOSE, PARSER_OUTPUT, "invalid type: invalid token: %s\n", tokentype_tostr(tok->token_type));
+      goto done;
+    }
+    
+    backupiter++;
+  }
+done:
+  *iter=backupiter;
+  return typeexpr_root;
+freenode:
+  ;  
+  // free
+  list_t tovisit = create_list(10, sizeof(astnode_t *));
+  size_t i = 0;
+  append(&tovisit, &typeexpr_root);
+  while (i<tovisit.len) {
+    astnode_t *v = *(astnode_t**)list_get(&tovisit, i);
+    if(v->left)append(&tovisit, &v->left);
+    if(v->right)append(&tovisit, &v->right);
+    free_node(v);
+    i++;
+  }
+  free_list(&tovisit);  
+  return NULL;
+
 }
 astnode_t* recipe_id(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
   // we want an id token.
@@ -538,12 +655,12 @@ typedef struct{
 static recipe_t recipes[] = {
     {.order = TOKEN_EXPR, .chef = recipe_expr},
     {.order = TOKEN_EXPR_COND, .chef = recipe_expr_cond},
-    {.order=TOKEN_VALUE, .chef=recipe_value},
-    {.order=TOKEN_ID, .chef=recipe_id},
-    {.order=TOKEN_TYPEKW, .chef=recipe_typekw},
-    {.order=TOKEN_STATEMENTS, .chef=recipe_stmts},
-    {.order=TOKEN_ARGLIST, .chef=recipe_arglist},
-    {.order=TOKEN_CLASS_MEMBERDEF, .chef=recipe_class_member},
+    {.order = TOKEN_VALUE, .chef = recipe_value},
+    {.order = TOKEN_ID, .chef = recipe_id},
+    {.order = TOKEN_STATEMENTS, .chef = recipe_stmts},
+    {.order = TOKEN_ARGLIST, .chef = recipe_arglist},
+    {.order = TOKEN_CLASS_MEMBERDEF, .chef = recipe_class_member},
+    {.order=TOKEN_TYPEKW, .chef=recipe_typekw},    
 };
 // collect the tokens by the recipe. and if ordered expr, value or stmt, it
 // packs up tokens in the range into a node. 
@@ -705,7 +822,12 @@ astnode_t* parse_class(list_t* collected, list_t* tokens, size_t *iter, filepos_
   astnode_t *classnode = create_node(NODE_CLASS, idnode, members, NULL, pos);
   return classnode;
 }
-
+astnode_t* parse_array_index(list_t* collected, list_t* tokens, size_t *iter, filepos_t pos){
+  astnode_t* idnode=*(astnode_t**)list_get(collected, 0);
+  astnode_t *index = *(astnode_t **)list_get(collected, 1);
+  astnode_t *indexnode = create_node(NODE_INDEX, idnode, index, NULL, pos);
+  return indexnode;
+}
 astnode_t* parse_return_noexpr(list_t *collected, list_t *tokens, size_t *iter, filepos_t pos){
   astnode_t *returnnode =
       create_node(NODE_RETURN, NULL, NULL, NULL, pos);
@@ -783,7 +905,7 @@ ttt(pat_return) = {RETURN, TOKEN_EXPR, SEMICOLON};
 ttt(pat_return_noexpr) = {RETURN, SEMICOLON};
 ttt(pat_class_def) = {CLASS, TOKEN_ID, OPENBRACE, TOKEN_CLASS_MEMBERDEF,
                       CLOSEBRACE};
-
+ttt(pat_index) = {TOKEN_ID, OPEN_SQUAREBRACKET, TOKEN_EXPR, CLOSE_SQUAREBRACKET};
 static syntax_rule_t syntaxes[] = {
     {.name = "vardef", .recipe = pat_vardef,  .recipe_len= 7, .builder=parse_definition},
     {.name = "vardef_notype", .recipe = pat_vardef_notype,  .recipe_len= 5, .builder=parse_definition_notype},
@@ -797,6 +919,7 @@ static syntax_rule_t syntaxes[] = {
     {.name = "return", .recipe= pat_return, .recipe_len= 3, .builder=parse_return},
     {.name = "return_noexpr", .recipe= pat_return_noexpr, .recipe_len= 2, .builder=parse_return},
     {.name = "class_def", .recipe= pat_class_def, .recipe_len= 5, .builder=parse_class},
+    {.name = "array_index", .recipe= pat_index, .recipe_len= 4, .builder=parse_array_index},
 };
 
 astnode_t *parse_statement(list_t *tokens, size_t *iter) {

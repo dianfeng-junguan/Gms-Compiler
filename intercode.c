@@ -126,7 +126,51 @@ size_t get_member_offset(symbol_type_index_t object_type, char *membername) {
     symbol_type_t *member_type=list_get(&type_table, pair->type);
     offset+=member_type->size;
   }
-  return offset;  
+  return offset;
+}
+tmpvar_t gen_arrayfill(list_t* code_list, astnode_t *arrayfill){
+  size_t nr_ele = count_element(arrayfill->left);
+  list_t tovisit = create_list(10, sizeof(astnode_t));
+  list_t eles = create_list(10, sizeof(astnode_t));
+  size_t i = 0;
+  append(&tovisit, arrayfill->left);
+  while (i<tovisit.len) {
+    astnode_t *node = list_get(&tovisit, i);
+    switch (node->node_type) {
+    case NODE_COMMALIST: {
+      if(node->left)append(&tovisit, node->left);
+      if(node->right)append(&tovisit, node->right);
+      break;
+    }
+      // things that can be used to fill an array      
+    case NODE_ARRAYFILL:
+    case NODE_CLASSFILL:
+    case NODE_IDENTIFIER:
+    case NODE_CONSTANT: {
+      append(&eles, node);
+      break;
+    }
+    default:
+      cry_errorf(SENDER_INTERCODER, node->position, "unsupported element in an array\n");
+      break;
+    }
+    i++;
+  }
+  free_list(&tovisit);
+  // the most preceeding element is stored in the leftest position in the
+  // commalist tree, which is also the deepest position, so the order of eles
+  // is reversed from the given one.
+  symbol_type_t *st = list_get(&type_table, arrayfill->value_type);
+  size_t elesz = st->size / nr_ele;
+  tmpvar_t tmparray = make_tmpvar(st->size);  
+  push_code(code_list, CODE_ALLOC_TMP, TMP(tmparray), IMM(nr_ele*elesz), EMPTY);
+  for (size_t i=eles.len; i>0; i--) {
+    astnode_t *node = list_get(&eles, i - 1);
+    tmpvar_t tmpv=gen_node(node, code_list, 0, 0);
+    push_code(code_list, CODE_MOV, OFFSETTMP(tmparray, elesz*(i-1)), TMP(tmpv), EMPTY);
+  }
+  free_list(&eles);
+  return tmparray;
 }
 /// generate intercodes of classfill
 void gen_classfill(list_t *code_list, astnode_t *node, tmpvar_t *tmpvar) {
@@ -177,6 +221,38 @@ void gen_classfill(list_t *code_list, astnode_t *node, tmpvar_t *tmpvar) {
   }
   free_list(&tovisit);
 }
+/// generate lhs.
+/// this returns operands that is associated with the symbol, rather 
+/// than a copy of it.
+operand_t gen_lhs(astnode_t *node, list_t *code_list){
+  switch (node->node_type) {
+  case NODE_IDENTIFIER: {
+    return VALUE(node->value);
+  }
+  case NODE_DEFER: {
+    tmpvar_t tmpv=gen_node(node->right, code_list, 0, 0);
+    return OFFSETTMP(tmpv, 0);
+  }
+  case NODE_INDEX: {
+    // gen index number
+    tmpvar_t tmpv = gen_node(node->right, code_list, 0, 0);
+    // calc offset    
+    symbol_t *arr = find_symbol(node->syms, node->left->value);
+    assert(arr);
+    symbol_type_t *st = list_get(&type_table, arr->sym_type);
+    size_t elesz = st->element_size;
+    tmpvar_t cont = make_tmpvar(elesz);
+    push_code(code_list, CODE_ALLOC_TMP, TMP(cont), IMM(elesz), EMPTY);
+    push_code(code_list, CODE_REFER, TMP(cont), VALUE(node->left->value),EMPTY);
+    push_code(code_list, CODE_ADD, TMP(cont), TMP(tmpv), TMP(cont));
+    return OFFSETTMP(cont, 0);
+  }
+  default:
+    cry_errorf(SENDER_INTERCODER, node->position, "unsupported lhs\n");    
+    break;
+  }
+  return EMPTY;
+}
 /// generate intercode of a node.
 /// returns the struct describing the tmp var which stores the value of the
 /// expression if
@@ -210,17 +286,39 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     
     break;
   }
+  case NODE_INDEX: {
+    // rhs
+    // gen index number
+    tmpvar_t tmpv = gen_node(node->right, code_list, 0, 0);
+    // calc offset    
+    symbol_t *arr = find_symbol(node->syms, node->left->value);
+    assert(arr);
+    symbol_type_t *st = list_get(&type_table, arr->sym_type);
+    size_t elesz = st->element_size;
+    tmpvar_t cont = make_tmpvar(elesz);
+    push_code(code_list, CODE_ALLOC_TMP, TMP(cont), IMM(elesz), EMPTY);
+    push_code(code_list, CODE_REFER, TMP(cont), VALUE(node->left->value),EMPTY);
+    push_code(code_list, CODE_ADD, TMP(cont), TMP(tmpv), TMP(cont));
+    push_code(code_list, CODE_MOV, TMP(cont), OFFSETTMP(cont, 0), EMPTY);
+    return cont;
+    break;
+  }
+  case NODE_ARRAYFILL: {
+    tmpvar_t tmpv = gen_arrayfill(code_list, node);
+    return tmpv;
+  }    
   case NODE_ASSIGN: {
-    assert(node->left && node->left->value && node->right);
-    char *assigned = node->left->value;
+    assert(node->left && node->right);
     tmpvar_t rhs = gen_node(node->right, code_list, tmpnum, layer + 1);
-    push_code(code_list, CODE_MOV, VALUE(assigned), TMP(rhs), EMPTY);
-    
+    operand_t lhs=gen_lhs(node->left, code_list);        
+    push_code(code_list, CODE_MOV, lhs, TMP(rhs), EMPTY);    
     break;
   }
   case NODE_DEFINITION: {
+    // need to consider lhs situations: *a, a[1]
     tmpvar_t rhs = gen_node(node->right, code_list, tmpnum, layer + 1);
-    push_code(code_list, CODE_MOV, VALUE(node->left->left->value), TMP(rhs), EMPTY);
+    operand_t lhsop=gen_lhs(node->left->left, code_list);
+    push_code(code_list, CODE_MOV, lhsop, TMP(rhs), EMPTY);
     
     break;
   }
@@ -256,9 +354,10 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     TWOOP_INTERCODE(BITOR);
 
   case NODE_REFER: {
-    // refer is restricted to identifiers so we can directly use the right node 
+    // refer is restricted to identifiers so we can directly use the right node
     tmpvar_t res = make_tmpvar(8);
-    push_code(code_list, CODE_REFER, TMP(res), ADDR(node->right->value), EMPTY);
+    push_code(code_list, CODE_ALLOC_TMP, TMP(res), IMM(8), EMPTY);
+    push_code(code_list, CODE_REFER, TMP(res), VALUE(node->right->value), EMPTY);
     return res;
     break;
   }
