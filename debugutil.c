@@ -139,6 +139,7 @@ const char* codetype_tostr(intercode_type_t type) {
     case CODE_ALLOC_GLOBAL: return "CODE_ALLOC_GLOBAL";
     case CODE_ALLOC_LOCAL: return "CODE_ALLOC_LOCAL";
     case CODE_ALLOC_TMP: return "CODE_ALLOC_TMP";
+    case CODE_DECL_ARG: return "CODE_DECL_ARG";
     case CODE_FREE: return "CODE_FREE";
     case CODE_RETURN: return "CODE_RETURN";
     case CODE_MOV: return "CODE_MOV";

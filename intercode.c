@@ -271,6 +271,15 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     push_code(code_list, CODE_DEF_FUNC, KEEP(funcname), EMPTY, EMPTY);
     // then assign the symbols
     allocate_syms(code_list, node->syms);
+    // now the passed arguments are also allocated but they are treated as
+    // normal local vars now. add another intercode to indicate the
+    // identity of argument.
+    symbol_t *funcsym = find_symbol(node->syms, funcname);
+    for (size_t i=0; i<funcsym->args.len; i++) {
+      name_type_pair_t *arg = list_get(&funcsym->args, i);
+      // op: name arg order
+      push_code(code_list, CODE_DECL_ARG, VALUE(arg->name), IMM(i), EMPTY);
+    }
     // then gen the body
     gen_node(node->right, code_list, tmpnum, layer + 1);
     push_code(code_list, CODE_DEF_FUNC_END, KEEP(funcname), EMPTY, EMPTY);

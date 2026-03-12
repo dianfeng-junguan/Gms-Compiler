@@ -179,6 +179,13 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       ASM("%s: %s %s\n",op1, width, op2);
       break;
     }
+    case CODE_DECL_ARG: {
+      // mov args passed by registers to stackmem
+      // TODO: consider spilled args      
+      char *reg = abi.arg_regs[intercode->op2.num_value];
+      ASM("str %s,%s\n", reg, op1);      
+      break;
+    }
     case CODE_DEF_FUNC: {
       ASM(".global %s\n",op1);
       ASM("%s:\n",op1);

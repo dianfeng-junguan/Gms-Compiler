@@ -40,7 +40,7 @@ static symbol_type_t intrinsic_types[] = {
     
 };
 bool check_node(astnode_t* node, compiler_global_data_t* globals);
-bool check_arglist(astnode_t* commalist, list_t* arglist, size_t index, filepos_t pos);
+bool check_arglist(astnode_t* commalist, list_t* arglist, filepos_t pos);
 
 /// compare the two tree by structure and node type.
 static bool compare_tree(astnode_t* a, astnode_t *b){
@@ -183,15 +183,15 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
   if(node->node_type==NODE_DECLARE_FUNC||node->node_type==NODE_DECLARE_VAR){
     defedsym.is_extern=true;
   }
-  // for func declaration we need to scan the arglist  
-  if(node->node_type==NODE_DECLARE_FUNC||node->node_type==NODE_FUNCTION){
-    init_list(&defedsym.args, 6, sizeof(symbol_type_index_t));
-    defedsym.type=SYMBOL_FUNCTION;
-    if(node->node_type==NODE_FUNCTION){
-      node->value_type = node->left->right->value_type;
-    }
+  // for func we need to scan the arglist  
+  if(node->node_type==NODE_FUNCTION||node->node_type==NODE_DECLARE_FUNC){
+    init_list(&defedsym.args, 6, sizeof(name_type_pair_t));
+    defedsym.type = SYMBOL_FUNCTION;
+    // set the FUNCTION node var_type as return type
+    node->value_type = vartype;
+    
     current_func_arglist = &defedsym.args;
-    in_function=true;
+    in_function=node->node_type==NODE_DECLARE_FUNC?false:true;
     function_rettype=node->value_type;
     // use the node's symbol tab to prevent the arg variable from leaking into
     // outer scope
@@ -213,20 +213,24 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
     in_function=false;
   }
   if (node->node_type == NODE_ARGPAIR) {
-    symbol_t sym=create_symbol(node->left->value, SYMBOL_VARIABLE, node->right->value_type);
-    if(!current_func_arglist){
+    if (!current_func_arglist) {
       cry_error(SENDER_SEMATIC, "function arglist not in a function",
-                node->position);
-      return false;
+		node->position);
     }
-    append(current_func_arglist, &node->right->value_type);
-    add_symbol(node->syms, sym);
-  } else {
+    // add it to the func node arglist
+    name_type_pair_t arginfo = {.name = clone_str(name), .type = vartype};
+    append(current_func_arglist, &arginfo);    
+  }
+  do_log(VERBOSE, SEMATIC_CHECK, "redef checker added symbol %s\n", name);
+  if (!(node->node_type == NODE_ARGPAIR && !in_function)) {
+    // exclude func decl situations. their arglist doesn't need to be added
+    // to symtab
     add_symbol(node->syms, defedsym);
   }
+  // check function body
   if (node->node_type == NODE_FUNCTION) {
     in_function=true;
-    function_rettype=node->value_type;
+    function_rettype=vartype;
     bool suc = check_node(node->right->right, globals);
     in_function = false;
     function_rettype=0;
@@ -466,17 +470,13 @@ bool funccall_arg_checker(astnode_t *node,  compiler_global_data_t *globals) {
   if(!check_node(node->left, globals)){
     return false;
   }
-  if (!node->syms) return false;
-  for (size_t i=0; i < node->syms->table.len; ++i) {
-    symbol_t *sym=list_get(&node->syms->table, i);
-    if(strcmp(node->left->value, sym->name)==0){
-      node->value_type=sym->return_type;
-      if (!check_arglist(node->right, &sym->args, 0,
-                         node->position)) {
-	cry_errorf(SENDER_SEMATIC, node->position, "wrong argument type");
-	return false;
-      }
-    }
+  if (!node->syms)
+    return false;
+  symbol_t *sym=find_symbol(node->syms, node->left->value);  
+  node->value_type=sym->return_type;
+  if (!check_arglist(node->right, &sym->args, node->position)) {    
+    cry_errorf(SENDER_SEMATIC, node->position, "wrong argument type");
+    return false;
   }
   // infer type of this funccall
   symbol_t *func = find_symbol(node->syms, node->left->value);
@@ -595,7 +595,7 @@ bool condition_block_checker(astnode_t *node,  compiler_global_data_t *globals) 
 }
 
 bool otherschk_trigger(astnode_t *node) {
-  return node->node_type==NODE_LEAFHOLDER;
+  return node->node_type==NODE_LEAFHOLDER||node->node_type==NODE_ARGLIST;
 }
 bool otherschk_checker(astnode_t* node , compiler_global_data_t *globals) {
   return (node->left?check_node(node->left, globals):true)&&
@@ -725,33 +725,46 @@ bool check_node(astnode_t *node, compiler_global_data_t* globals) {
       }      
     }
   }
-  return true;  
+  return true;
 }
-bool check_arglist(astnode_t* commalist, list_t* arglist, size_t index, filepos_t pos){
-  if(commalist->node_type==NODE_COMMALIST){
-    if(commalist->left){
-      if(!check_arglist(commalist->left, arglist, index, pos))return false;
-    }
-    if(commalist->right){
-      if(!check_arglist(commalist->right, arglist, index+1, pos))return false;
-    }
-    return true;
+void tree_to_list(astnode_t* node, list_t *list){
+  switch (node->node_type) {
+  case NODE_COMMALIST: {
+    if(node->left)tree_to_list(node,list);
+    if(node->right)tree_to_list(node,list);
+    break;
   }
-  if(arglist->len<=index){
-    cry_error(SENDER_SEMATIC, "too many arguments", pos);
-    return false;
+  default:
+    append(list, node);
+    break;
+  }
+}
+bool check_arglist(astnode_t *commalist, list_t *arglist, filepos_t pos) {  
+  list_t passed_args = create_list(10, sizeof(astnode_t));
+  tree_to_list(commalist, &passed_args);
+  bool r=true;
+  if(arglist->len!=passed_args.len){
+    cry_errorf(SENDER_SEMATIC, pos, "argument numbers does not match: expected %zu arguments, met %zu\n", arglist->len, passed_args.len);
+    r = false;
+    goto endfree; 
   }
   if(!check_node(commalist, NULL)){
-    return false;
+    r = false;
+    goto endfree;
   }
-  symbol_type_index_t passedtype=commalist->value_type;
-  symbol_type_index_t argtype=*(symbol_type_index_t*)list_get(arglist, index);
-  if(symtypcmp(passedtype,argtype)!=0){
-    cry_errorf(SENDER_SEMATIC, pos, "expected type %d , found %d\n",
-	       (argtype),(passedtype));
-    return false;
+  for (size_t i = 0; i < arglist->len; i++) {
+    astnode_t* passedtype=list_get(&passed_args, i);
+    name_type_pair_t *argtype=list_get(arglist, i);
+    if (passedtype->value_type != argtype->type) {    
+      cry_errorf(SENDER_SEMATIC, pos, "wrong argument:expected type %d , found %d\n",
+		 (argtype->type),(passedtype->value_type));
+      r = false;
+      goto endfree;
+    }
   }
-  return true;
+ endfree:  
+  free_list(&passed_args);
+  return r;
 }
 bool preprocess_tree(astnode_t* ast, compiler_global_data_t* globals){
   bool suc = true;
@@ -787,6 +800,7 @@ size_t get_typesize(symbol_type_index_t typeindex) {
 }
 
 symbol_table_t create_symtab(symbol_table_t *parent) {
+  
   symbol_table_t symtab = {.parent = parent,
                            .table = create_list(10, sizeof(symbol_t))};
   return symtab;

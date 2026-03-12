@@ -1,5 +1,8 @@
 # 规范
 ## ast node的构成
+### NODE_FUNCCALL
+- left: NODE_ID
+- right: NODE_LEAFHOLDER/arg
 
 ### NODE_DEFINITION
 
