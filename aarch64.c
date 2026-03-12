@@ -189,7 +189,7 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
     case CODE_DEF_FUNC: {
       ASM(".global %s\n",op1);
       ASM("%s:\n",op1);
-      ASM("str fp,[sp,#-16]!\nmov fp,sp\n");
+      ASM("stp fp,lr,[sp,#-16]!\nmov fp,sp\n");
       // we don't have to store callee_saved_regs now because we just won't
       // use them at present
       /*char *r1,*r2;
@@ -235,8 +235,9 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       break;
     }
     case CODE_RETURN: {
-      if (intercode->op1.type!=OPERAND_EMPTY) {
-	if (intercode->op1.type==OPERAND_TMPVAR) {
+      operandtype_t op1typ=intercode->op1.type;
+      if (op1typ!=OPERAND_EMPTY) {
+	if (op1typ==OPERAND_TMPVAR||op1typ==OPERAND_IMMEDIATE) {
 	  ASM("mov x0,%s\n",op1);
 	}else{
 	  ASM("ldr x0,%s\n",op1);
@@ -256,7 +257,7 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
 	  r2=abi.callee_saved_regs[abi.callee_saved_regs_num-2-i];
 	}
       }*/
-      ASM("mov sp,fp\nldr fp,[sp],#16\nret\n");
+      ASM("mov sp,fp\nldp fp,lr,[sp],#16\nret\n");
       break;
     }
     case CODE_ALLOC_GLOBAL:{

@@ -282,6 +282,8 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     }
     // then gen the body
     gen_node(node->right, code_list, tmpnum, layer + 1);
+    // in case there is no return explicitly written
+    push_code(code_list, CODE_RETURN, IMM(0), EMPTY, EMPTY);
     push_code(code_list, CODE_DEF_FUNC_END, KEEP(funcname), EMPTY, EMPTY);
     break;
   }
