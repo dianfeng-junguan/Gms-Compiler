@@ -189,9 +189,15 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
     defedsym.type = SYMBOL_FUNCTION;
     // set the FUNCTION node var_type as return type
     node->value_type = vartype;
-    
+
     current_func_arglist = &defedsym.args;
-    in_function=node->node_type==NODE_DECLARE_FUNC?false:true;
+    bool prev_infunc = in_function;
+    symbol_type_index_t prev_rettype = function_rettype;
+    list_t *prev_arglist=current_func_arglist;
+    // prev_infunc is used here to store previous status of whether we are in
+    // a function. if we are already, then we do not set it to false even if
+    // node is a func decl.    
+    in_function=in_function|(node->node_type==NODE_DECLARE_FUNC?false:true);
     function_rettype=node->value_type;
     // use the node's symbol tab to prevent the arg variable from leaking into
     // outer scope
@@ -208,9 +214,9 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
       */
       return false;
     }
-    current_func_arglist = NULL;
-    function_rettype=-1;
-    in_function=false;
+    current_func_arglist = prev_arglist;
+    function_rettype=prev_rettype;
+    in_function=prev_infunc;
   }
   if (node->node_type == NODE_ARGPAIR) {
     if (!current_func_arglist) {
