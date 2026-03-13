@@ -5,7 +5,6 @@
 #include "status.h"
 #include "utils.h"
 #include <assert.h>
-#include <ctype.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -33,15 +32,61 @@ list_t type_table = {0};
 #define INTRINSIC_TYPE_INDEX_VOID 0
 #define INTRINSIC_TYPE_INDEX_INT 1
 #define INTRINSIC_TYPE_INDEX_STRING 2
+#define INTRINSIC_TYPE_INDEX_CHAR 3
 static symbol_type_t intrinsic_types[] = {
-  [INTRINSIC_TYPE_INDEX_VOID]={.name = "void", .size = 0},
-  [INTRINSIC_TYPE_INDEX_INT]={.name = "int", .size = 8},
-  [INTRINSIC_TYPE_INDEX_STRING]={.name = "string", .size = 8},// string is actually just a pointer
+  [INTRINSIC_TYPE_INDEX_VOID]={.name = "void", .size = 0,.type_tree=0},
+  [INTRINSIC_TYPE_INDEX_INT]={.name = "int", .size = 8,.type_tree=0},
+  [INTRINSIC_TYPE_INDEX_CHAR]={.name = "char", .size = 1,.type_tree=0},
+  [INTRINSIC_TYPE_INDEX_STRING]={.name = "string", .size = 8,.type_tree=0},// string is actually just a pointer
     
 };
 bool check_node(astnode_t* node, compiler_global_data_t* globals);
-bool check_arglist(astnode_t* commalist, list_t* arglist, filepos_t pos);
+bool check_arglist(astnode_t *commalist, list_t *arglist, filepos_t pos);
+/// check if the two types can be implicitly converted to each other.
+bool type_implicitly_convertable(symbol_type_index_t a, symbol_type_index_t b){
+  // first check some intrinsic-type-consisted combinations
+#define ORDERLESS_COMBINATION(a, b, va, vb)	\
+  ((a == va && b == vb) ||			\
+   (b == va && a == vb))
 
+  if (ORDERLESS_COMBINATION(a, b, INTRINSIC_TYPE_INDEX_INT,
+                             INTRINSIC_TYPE_INDEX_CHAR)||a==b) {
+    // char == int
+    return true;
+  }
+  // then get the type trees
+  symbol_type_t *atype = list_get(&type_table, a);
+  symbol_type_t *btype = list_get(&type_table, b);
+  astnode_t* atree=atype->type_tree;
+  astnode_t* btree=btype->type_tree;
+  bool a_pointer = atree->node_type == NODE_POINTEROF;
+  bool b_pointer = btree->node_type == NODE_POINTEROF;
+  bool a_array = atree->node_type == NODE_ARRAYOF;
+  bool b_array = btree->node_type == NODE_ARRAYOF;
+  if ((a_pointer && b == INTRINSIC_TYPE_INDEX_INT) ||
+      (b_pointer && a == INTRINSIC_TYPE_INDEX_INT)) {
+    // int == pointer
+    return true;
+  }
+  if ((a_pointer && b == INTRINSIC_TYPE_INDEX_STRING) ||
+      (b_pointer && a == INTRINSIC_TYPE_INDEX_STRING)) {
+    // string == pointer
+    return true;
+  }
+  if ((a_pointer && b_array) ||
+      (b_pointer && a_array)) {
+    // array == pointer
+    return true;
+  }
+  if (SEMATIC_CHECK==1&&LOG_LEVEL<=VERBOSE) {
+    do_log(VERBOSE, SEMATIC_CHECK, "%s failed: \n a tree:\n", __FUNCTION__);
+    print_node(atree, 0);
+    do_log(VERBOSE, SEMATIC_CHECK, "b tree:\n");
+    print_node(btree,0);
+  }
+  
+  return false;
+}
 /// compare the two tree by structure and node type.
 static bool compare_tree(astnode_t* a, astnode_t *b){
   if ((!a && b) || (a && !b)) {
@@ -159,9 +204,11 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
                   ? get_type_from_typetree(NODE_DEF_TYPEKW(node))
                   : node->right->value_type;
     // check the types of rexpr and type annotation
-    if(node->right->value_type!=vartype){
+    if(!type_implicitly_convertable(node->right->value_type,vartype)){
       cry_errorf(SENDER_SEMATIC, node->position,
-                 "type annotation does not conform to the right expression.\n");
+                 "type annotation does not conform to the right expression: "
+                 "expected %d, met %d\n",
+                 vartype, node->right->value_type);      
       return false;
     }
     break;
@@ -179,7 +226,7 @@ bool sym_redef_checker(astnode_t *node,  compiler_global_data_t *globals) {
   // ok. add it to the symtab.
   symbol_t defedsym =
       create_symbol(name, SYMBOL_VARIABLE, vartype);
-  LOG(VERBOSE, "added symbol %s\n", name);
+  do_log(VERBOSE,SEMATIC_CHECK, "added symbol %s\n", name);
   if(node->node_type==NODE_DECLARE_FUNC||node->node_type==NODE_DECLARE_VAR){
     defedsym.is_extern=true;
   }
@@ -402,6 +449,8 @@ bool ctypeinf_checker(astnode_t *node, compiler_global_data_t *globals) {
   }
   switch (node->extra_info) {
   case CONSTANT_CHAR:
+    node->value_type = INTRINSIC_TYPE_INDEX_CHAR;
+    break;
   case CONSTANT_NUMBER: {
     node->value_type = INTRINSIC_TYPE_INDEX_INT;
     break;
@@ -428,7 +477,7 @@ bool sym_undef_checker(astnode_t *node,  compiler_global_data_t *globals) {
       symbol_t* sym=list_get(&symtab->table, i);
       assert(node->value);
       if(strcmp(node->value, sym->name)==0){
-	LOG(VERBOSE, "identifier found defined symbol %s, type %d\n",
+	do_log(VERBOSE,SEMATIC_CHECK, "identifier found defined symbol %s, type %d\n",
 	    node->value, sym->sym_type);
 	node->value_type=sym->sym_type;
 	return true;
@@ -462,7 +511,8 @@ bool incontype_checker(astnode_t *node,  compiler_global_data_t *globals) {
       !check_node(node->right, globals)) {
     return false;
   }
-  if(symtypcmp(node->left->value_type,node->right->value_type)!=0){
+  // if the two types cannot be implicitly converted to the other one  
+  if(!type_implicitly_convertable(node->left->value_type,node->right->value_type)){
     cry_error(SENDER_SEMATIC, "left expression type and right expression type are not the same", node->position);
     return false;
   }
@@ -528,7 +578,7 @@ bool return_checker(astnode_t *node,  compiler_global_data_t *globals) {
     else
       return false;
   }
-  if(symtypcmp(function_rettype,rett)<0){
+  if(!type_implicitly_convertable(function_rettype,rett)){
     cry_errorf(SENDER_SEMATIC, node->position, "return type does not meet the function type");
     return false;
   }
@@ -632,9 +682,11 @@ void init_sematic(){
   astnode_t *void_tree=create_node(NODE_TYPEKW,NULL,NULL,"void",(filepos_t){0});
   astnode_t *int_tree=create_node(NODE_TYPEKW,NULL,NULL,"int",(filepos_t){0});
   astnode_t *string_tree=create_node(NODE_TYPEKW,NULL,NULL,"string",(filepos_t){0});
+  astnode_t *char_tree=create_node(NODE_TYPEKW,NULL,NULL,"char",(filepos_t){0});
   intrinsic_types[INTRINSIC_TYPE_INDEX_VOID].type_tree = void_tree;
   intrinsic_types[INTRINSIC_TYPE_INDEX_INT].type_tree = int_tree;
   intrinsic_types[INTRINSIC_TYPE_INDEX_STRING].type_tree = string_tree;
+  intrinsic_types[INTRINSIC_TYPE_INDEX_CHAR].type_tree = char_tree;
   for (int i = 0; i < sizeof(intrinsic_types) / sizeof(symbol_type_t); i++) {
     append(&type_table, &intrinsic_types[i]);
   }
@@ -673,7 +725,7 @@ bool class_def_checker(astnode_t *node,  compiler_global_data_t *globals) {
   class_type.type_tree = clone_tree(node);  
   do_log(VERBOSE, SEMATIC_CHECK, "class %s size=%zu\n",class_type.name,class_size);
   append(&type_table, &class_type);
-  LOG(VERBOSE, "class type registered:%s\n",class_type.name);
+  do_log(VERBOSE,SEMATIC_CHECK, "class type registered:%s\n",class_type.name);
   free_list(&tovisit);
   return true;
 }
@@ -725,7 +777,7 @@ bool check_node(astnode_t *node, compiler_global_data_t* globals) {
   for (size_t i=0; i < sizeof(sematic_rules)/sizeof(rule_t); ++i) {
     rule_t* r=&sematic_rules[i];
     if (r->trigger(node)) {
-      LOG(VERBOSE, "checking node %s with %s\n", get_nodetype_str(node->node_type), r->name);
+      do_log(VERBOSE, SEMATIC_CHECK, "checking node %s with %s\n", get_nodetype_str(node->node_type), r->name);
       if(!r->checker(node, globals)){
 	return false;
       }      
@@ -761,7 +813,7 @@ bool check_arglist(astnode_t *commalist, list_t *arglist, filepos_t pos) {
   for (size_t i = 0; i < arglist->len; i++) {
     astnode_t* passedtype=list_get(&passed_args, i);
     name_type_pair_t *argtype=list_get(arglist, i);
-    if (passedtype->value_type != argtype->type) {    
+    if (!type_implicitly_convertable(passedtype->value_type, argtype->type)) {    
       cry_errorf(SENDER_SEMATIC, pos, "wrong argument:expected type %d , found %d\n",
 		 (argtype->type),(passedtype->value_type));
       r = false;

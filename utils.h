@@ -120,6 +120,7 @@ void free_rest();
   if (level >= LOG_LEVEL)                                                      \
     printf(fmt, ##__VA_ARGS__);
 void do_log(int level, int part, const char* fmt, ...);
+
 #define LOGERR(level, sender, pos, fmt, ...) if(level>=LOG_LEVEL)cry_errorf(sender, pos, fmt,##__VA_ARGS__);
 #else
 #define LOG(level, fmt, ...)
@@ -128,14 +129,18 @@ void do_log(int level, int part, const char* fmt, ...);
 #define ALIGNUP(v,alignment) ((v+alignment-1)&~(alignment-1))
 typedef enum {
   INTERCODE_ALLOCSYM,
+  INTERCODE_RESULT,
   SEMATIC_CHECK,
   PARSER_OUTPUT,
   PARSER_OUTPUTTREE,
   LEXER_OUTPUT,
-  ASMGEN_ALLOCREG,  
-  ASMGEN_ALLOCLOCAL
+  ASMGEN_ALLOCREG,
+  ASMGEN_ALLOCLOCAL,
+  ASMGEN_RESULT,
+  LEXER_RESULT,  
+  LEXER_PROCESS,  
 } log_parts;
-
+int is_log_part_enabled(log_parts part);
 #endif
 
 

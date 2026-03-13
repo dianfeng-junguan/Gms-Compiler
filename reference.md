@@ -46,3 +46,10 @@
 ```
 let a:classname=classname{name:value,...};
 ```
+# 类型转换
+
+允许隐式转换的类型:
+int == pointer
+string == pointer
+char == int
+array == pointer

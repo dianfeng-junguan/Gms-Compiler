@@ -51,6 +51,19 @@ bool char_after(char *str, list_t *tokens, filepos_t pos) {
   return true;
 }
 
+bool comment_begin(char c) {
+  return c=='/';
+}
+bool comment_allowed(char c, char *scanned, size_t offset) {
+  return c!='\n';
+}
+bool comment_after(char *str, list_t *tokens, filepos_t pos) {
+  if (strlen(str)<2||str[0]!='/'||str[1]!='/') {
+    return false;
+  }
+  // we do not add comment token to tokenlist  
+  return true;  
+}
 bool number_begin(char c) { return isdigit(c); }
 bool number_allowed(char c, char *scanned, size_t offset) {
   return ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F') || isdigit(c) ||
@@ -102,7 +115,7 @@ bool number_after(char *str, list_t *tokens, filepos_t pos) {
 
   if (flag) {
     // create the token
-    LOG(VERBOSE, "Creating number token:%s\n", str);
+    do_log(VERBOSE,LEXER_PROCESS, "Creating number token:%s\n", str);
     token_t tok = create_token(CONSTANT_NUMBER, str, pos);
     list_append(tokens, &tok);
     return true;
@@ -134,6 +147,7 @@ str_tok_pair_t keywords[] = {
 
     {"int", INT},
     {"string", STRING},
+    {"char", CHAR},
     {"void", VOID}, 
     
 };
@@ -273,6 +287,7 @@ bool separator_after(char *str, list_t *tokens, filepos_t pos) {
   return false;
 }
 lex_recipe_t scan_recipe[] = {
+    {comment_begin, comment_allowed, comment_after}, // costant: number,
     {number_begin, number_allowed, number_after}, // costant: number,
     {string_begin, string_allowed, string_after}, // costant: string,
     {char_begin, char_allowed, char_after}, // costant: char,
@@ -319,7 +334,7 @@ list_t do_lex(char *str) {
     bool token_flag = false;
     for (size_t i = 0; i < sizeof(scan_recipe) / sizeof(lex_recipe_t); ++i) {
       if (scan_recipe[i].begin(str[ptr])) {
-        LOG(VERBOSE, "begin with recipe %zu, ptr=%zu\n", i, ptr);
+        do_log(VERBOSE,LEXER_PROCESS, "begin with recipe %zu, ptr=%zu\n", i, ptr);
         // beginning allowed
         size_t pioneer = ptr + 1;
         // scan the whole thing
@@ -327,10 +342,10 @@ list_t do_lex(char *str) {
                scan_recipe[i].scan(str[pioneer], &str[ptr], pioneer - ptr)) {
           pioneer++;
         }
-        LOG(VERBOSE, "scanned, pioneer=%zu\n", pioneer);
+        do_log(VERBOSE,LEXER_PROCESS, "scanned, pioneer=%zu\n", pioneer);
         if (pioneer == ptr) {
           // empty str?
-          LOG(VERBOSE,
+          do_log(VERBOSE,LEXER_PROCESS,
               "scanned an empty str at line %zu, column %zu. this is not "
               "right.\n",
               line, col);
@@ -344,10 +359,10 @@ list_t do_lex(char *str) {
         // final check and add it to the tokens
         if (!scan_recipe[i].after(subbed, &tokens, (filepos_t){line, col})) {
           // failed final check, freeing the str.
-          LOG(VERBOSE, "failed final check\n");
+          do_log(VERBOSE,LEXER_PROCESS, "failed final check\n");
           myfree(subbed);
         } else {
-          LOG(VERBOSE, "taken token %s\n", subbed);
+          do_log(VERBOSE,LEXER_PROCESS, "taken token %s\n", subbed);
           // succeeded.
           token_flag = true;
           forward(str, &ptr, pioneer - ptr, &line, &col);
@@ -358,6 +373,7 @@ list_t do_lex(char *str) {
     if (!token_flag) {
       cry_errorf(SENDER_LEXER, ((filepos_t){.line = line, .column = col}),
                  "met an token-untranslatable str\n");
+      panic("lexer failed\n");          
       break;
     }
   }

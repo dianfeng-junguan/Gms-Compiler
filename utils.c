@@ -71,8 +71,10 @@ void list_remove(list_t *list, size_t index){
   }
   list->len--;  
 }
-void* list_get(list_t* list, size_t index){
-  assert(index < list->len);
+void *list_get(list_t *list, size_t index) {
+  if (index >= list->len) {
+    return NULL;
+  }
   return list->array+list->element_size*index;
 } 
 void free_list(list_t* list){
@@ -206,13 +208,17 @@ void string_sprintf(cstring_t* cstr, char* fmt, ...){
 static int log_level = VERBOSE;
 
 static int log_parts_switch[] = {
-    [INTERCODE_ALLOCSYM] = 1,
-    [SEMATIC_CHECK] = 1,
-    [PARSER_OUTPUT] = 1,
+    [LEXER_PROCESS] = 0,    
+    [LEXER_RESULT] = 0,    
+    [INTERCODE_ALLOCSYM] = 0,
+    [INTERCODE_RESULT] = 0,
+    [SEMATIC_CHECK] = 0,
+    [PARSER_OUTPUT] = 0,
     [PARSER_OUTPUTTREE] = 1,
     [LEXER_OUTPUT] = 0,
-    [ASMGEN_ALLOCREG] = 1,
-    [ASMGEN_ALLOCLOCAL] = 1,
+    [ASMGEN_ALLOCREG] = 0,
+    [ASMGEN_ALLOCLOCAL] = 0,
+    [ASMGEN_RESULT] = 0,
     
 };
 void do_log(int level, int part, const char* fmt, ...){
@@ -224,3 +230,6 @@ void do_log(int level, int part, const char* fmt, ...){
   }
 }
 
+int is_log_part_enabled(log_parts part){
+  return log_parts_switch[part];
+}

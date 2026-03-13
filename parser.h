@@ -178,7 +178,7 @@ astnode_t *create_node(astnode_type_t type, astnode_t *left, astnode_t *right,
 void free_node(astnode_t *node);
 void free_symbol(symbol_t *sym);
 void free_all_nodes();
-
+void print_node(astnode_t* node, int indent);
 
 symbol_table_t create_symtab(symbol_table_t *parent);
 void add_symbol(symbol_table_t *symtab, symbol_t sym);

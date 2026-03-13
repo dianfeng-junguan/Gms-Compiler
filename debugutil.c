@@ -9,6 +9,7 @@
 // Auto-generated function for tokentype_t
 const char* tokentype_tostr(tokentype_t type) {
   switch(type) {
+    case TOKEN_NONE: return "TOKEN_NONE";
     case LET: return "LET";
     case FN: return "FN";
     case IF: return "IF";
@@ -21,6 +22,7 @@ const char* tokentype_tostr(tokentype_t type) {
     case INCLUDE: return "INCLUDE";
     case INT: return "INT";
     case STRING: return "STRING";
+    case CHAR: return "CHAR";
     case VOID: return "VOID";
     case TYPE_KEYWORD: return "TYPE_KEYWORD";
     case WHITESPACE: return "WHITESPACE";
