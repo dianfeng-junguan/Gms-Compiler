@@ -42,12 +42,13 @@ static symbol_type_t intrinsic_types[] = {
 };
 bool check_node(astnode_t* node, compiler_global_data_t* globals);
 bool check_arglist(astnode_t *commalist, list_t *arglist, filepos_t pos);
-/// check if the two types can be implicitly converted to each other.
-bool type_implicitly_convertable(symbol_type_index_t a, symbol_type_index_t b){
-  // first check some intrinsic-type-consisted combinations
 #define ORDERLESS_COMBINATION(a, b, va, vb)	\
   ((a == va && b == vb) ||			\
    (b == va && a == vb))
+
+/// check if the two types can be implicitly converted to each other.
+bool type_implicitly_convertable(symbol_type_index_t a, symbol_type_index_t b){
+  // first check some intrinsic-type-consisted combinations
 
   if (ORDERLESS_COMBINATION(a, b, INTRINSIC_TYPE_INDEX_INT,
                              INTRINSIC_TYPE_INDEX_CHAR)||a==b) {
@@ -73,11 +74,6 @@ bool type_implicitly_convertable(symbol_type_index_t a, symbol_type_index_t b){
     // string == pointer
     return true;
   }
-  if ((a_pointer && b_array) ||
-      (b_pointer && a_array)) {
-    // array == pointer
-    return true;
-  }
   if (SEMATIC_CHECK==1&&LOG_LEVEL<=VERBOSE) {
     do_log(VERBOSE, SEMATIC_CHECK, "%s failed: \n a tree:\n", __FUNCTION__);
     print_node(atree, 0);
@@ -85,6 +81,28 @@ bool type_implicitly_convertable(symbol_type_index_t a, symbol_type_index_t b){
     print_node(btree,0);
   }
   
+  return false;
+}
+bool type_explicitly_convertable(symbol_type_index_t a, symbol_type_index_t b){
+  if (type_implicitly_convertable(a, b)) {
+    return true;
+  }
+  symbol_type_t *atype = list_get(&type_table, a);
+  symbol_type_t *btype = list_get(&type_table, b);
+  astnode_t* atree=atype->type_tree;
+  astnode_t* btree=btype->type_tree;
+  bool a_pointer = atree->node_type == NODE_POINTEROF;
+  bool b_pointer = btree->node_type == NODE_POINTEROF;
+  bool a_array = atree->node_type == NODE_ARRAYOF;
+  bool b_array = btree->node_type == NODE_ARRAYOF;
+  if (ORDERLESS_COMBINATION(a, b, INTRINSIC_TYPE_INDEX_INT, INTRINSIC_TYPE_INDEX_STRING)) {
+    return true;
+  }
+  if ((a_pointer && b_array) ||
+      (b_pointer && a_array)) {
+    // array == pointer
+    return true;
+  }
   return false;
 }
 /// compare the two tree by structure and node type.
@@ -479,8 +497,10 @@ bool exptypconv_checker(astnode_t *node, compiler_global_data_t *globals) {
   symbol_type_index_t convertedtyp = get_type_from_typetree(node->left);
   symbol_type_t *convertedst=list_get(&type_table, convertedtyp);
   astnode_t *convertedtt = convertedst->type_tree;
-  if (implici) {
-    
+  if (!type_explicitly_convertable(beftyp, convertedtyp)) {
+    // some types need to be explicitedly converted
+    cry_errorf(SENDER_SEMATIC, node->position, "types cannot be converted explicitly\n");
+    return false;
   }
   node->value_type = convertedtyp;
   return true;  

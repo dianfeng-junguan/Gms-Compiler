@@ -57,4 +57,7 @@ let a:classname=classname{name:value,...};
 int == pointer
 string == pointer
 char == int
+允许显式转换的类型:
+int == string
 array == pointer
+
