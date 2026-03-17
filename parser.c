@@ -69,13 +69,13 @@ astnode_t *parse_expr(list_t* tokens, size_t* iter, int precedence);
 typedef astnode_t* (*prefix_handler_t)(token_t *lefttoken, list_t *tokens, size_t* iter) ;
 typedef astnode_t *(*infix_handler_t)(astnode_t *left, list_t *tokens, size_t* iter);
 astnode_t *prefix_handler_id(token_t *lefttoken, list_t *tokens, size_t *iter) {
-  // LOG(VERBOSE, "%s ",lefttoken->value);
+  // do_log(VERBOSE,PARSER_OUTPUT, "%s ",lefttoken->value);
   (*iter)++;
   char* cloned=clone_str(lefttoken->value);
   return create_node(NODE_IDENTIFIER, NULL, NULL, cloned, lefttoken->position);
 }
 astnode_t* prefix_handler_const(token_t *lefttoken, list_t *tokens, size_t* iter){
-  // LOG(VERBOSE, "%s ",lefttoken->value);
+  // do_log(VERBOSE,PARSER_OUTPUT, "%s ",lefttoken->value);
   (*iter)++;
   char* value=lefttoken->value;
   astnode_t *node =
@@ -305,7 +305,7 @@ astnode_t *infix_handler_OPENBRACE(astnode_t *left, list_t *tokens,
   return create_node(mapping[OPENBRACE], left, right, NULL, left->position);
 }
 
-prefix_handler_t prefix_handlers[50] = {
+prefix_handler_t prefix_handlers[100] = {
     [IDENTIFIER] = prefix_handler_id,
     [CONSTANT_NUMBER] = prefix_handler_const,
     [CONSTANT_STRING] = prefix_handler_const,
@@ -368,37 +368,37 @@ astnode_t *parse_expr(list_t* tokens, size_t* iter, int precedence){
     left_node = prefix_handlers[left->token_type](left, tokens, &backupiter);
   if (!left_node)
     return NULL;
-  LOG(VERBOSE, "%s ",left->value);
+  do_log(VERBOSE,PARSER_OUTPUT, "%s ",left->value);
   // tokens have been consumed in the prefix handlers
   while (1) {
     token_t *peeked = list_get(tokens, backupiter);
     if (!peeked) {
-      LOG(VERBOSE, "peeking tokens[%zu] failed. might be the end of tokens.",backupiter);
+      do_log(VERBOSE,PARSER_OUTPUT, "peeking tokens[%zu] failed. might be the end of tokens.",backupiter);
       break;
     }
     
     if(peeked->token_type>=sizeof(precedences)/sizeof(int)||!precedences[peeked->token_type]){
       // met a token that cannot find its precedence in the array.
-      LOG(VERBOSE, "\nparse_expr precedences[%d] not found. quit.\n",peeked->token_type);
+      do_log(VERBOSE,PARSER_OUTPUT, "\nparse_expr precedences[%d] not found. quit.\n",peeked->token_type);
       break;
     } else if (precedences[peeked->token_type] <= precedence) {
-      LOG(VERBOSE, "\nparse_expr peeked precedences[%s](%d) lower than current one(%d). quit.\n", peeked->value, precedences[peeked->token_type],precedence);      
+      do_log(VERBOSE,PARSER_OUTPUT, "\nparse_expr peeked precedences[%s](%d) lower than current one(%d). quit.\n", peeked->value, precedences[peeked->token_type],precedence);      
       break;
     } else if (peeked->token_type <
                    sizeof(infix_handlers) / sizeof(infix_handler_t) &&
                !infix_handlers[peeked->token_type]) {
       // or it cannot be found in the infixhandlers
-      LOG(VERBOSE, "\ninfix_handlers[\"%s\"] not found. quit.\n",peeked->value);    
+      do_log(VERBOSE,PARSER_OUTPUT, "\ninfix_handlers[\"%s\"] not found. quit.\n",peeked->value);    
       break;
     }      
     // now actually consume the token
     backupiter++;
-    LOG(VERBOSE, "%s ", peeked->value);
+    do_log(VERBOSE,PARSER_OUTPUT, "%s ", peeked->value);
     // make up a bigger node
     left_node = infix_handlers[peeked->token_type](left_node, tokens, &backupiter);
-    //LOG(VERBOSE, "parse_expr infix handler ok\n");
+    //do_log(VERBOSE,PARSER_OUTPUT, "parse_expr infix handler ok\n");
   }
-  LOG(VERBOSE, "\nparse_expr ok. iter:%zu -> %zu.\n", *iter, backupiter);  
+  do_log(VERBOSE,PARSER_OUTPUT, "\nparse_expr ok. iter:%zu -> %zu.\n", *iter, backupiter);  
   *iter = backupiter;
   return left_node;
 }
@@ -443,7 +443,7 @@ astnode_t* recipe_value(list_t* tokens, size_t* iter, tokentype_t recipe[], size
   token_t *tok = list_get(tokens, *iter);
   if(tok&&(tok->token_type==IDENTIFIER||IS_CONST_TOK(tok))){
     // what we want
-    symbol_type_t value_type={TYPE_VOID,TYPE_VOID};
+    symbol_type_t value_type={0};
     // constant
     switch (tok->token_type) {
     case CONSTANT_NUMBER: {
@@ -486,7 +486,8 @@ astnode_t *recipe_typekw(list_t *tokens, size_t *iter, tokentype_t recipe[],
     switch (tok->token_type) {
     case INT: 
     case IDENTIFIER:// might be class 
-    case VOID: 
+    case VOID:
+    case CHAR: 
     case STRING: {
       // type keyword
       if (typeexpr_root) {
@@ -626,15 +627,15 @@ astnode_t* recipe_arglist(list_t* tokens, size_t* iter, tokentype_t recipe[], si
     } else {
       if(id)free_node(id);
       if(argtype)free_node(argtype);
-      LOG(VERBOSE, "parse_by_recipe.TOKEN_ARGLIST stopped bc id or argtype "
+      do_log(VERBOSE,PARSER_OUTPUT, "parse_by_recipe.TOKEN_ARGLIST stopped bc id or argtype "
 	  "incomplete\n");
       break;
     }
     *iter=backupiter;
     // check if we still have upcoming args
     if(!peek_check_token(tokens, backupiter, COMMA)){
-      LOG(VERBOSE, "parse_by_recipe.TOKEN_ARGLIST stopped bc no comma\n");
-      LOG(VERBOSE, "*iter=%zu, backupiter=%zu\n", (*iter), backupiter);      
+      do_log(VERBOSE,PARSER_OUTPUT, "parse_by_recipe.TOKEN_ARGLIST stopped bc no comma\n");
+      do_log(VERBOSE,PARSER_OUTPUT, "*iter=%zu, backupiter=%zu\n", (*iter), backupiter);      
       break;
     } else {
       // skip the comma
@@ -652,7 +653,7 @@ astnode_t* recipe_class_member(list_t* tokens, size_t* iter, tokentype_t recipe[
   astnode_t *members = create_node(NODE_LEAFHOLDER, NULL, NULL, NULL, emptypos);
   astnode_t* holder=members;
   while (backupiter<tokens->len) {
-    //LOG(VERBOSE, "%s iter=%zu\n", __FUNCTION__,*iter);
+    //do_log(VERBOSE,PARSER_OUTPUT, "%s iter=%zu\n", __FUNCTION__,*iter);
     token_t *tok=list_get(tokens, backupiter);
     astnode_t *id = parse_identifier(tokens, &backupiter);
     astnode_t *memtype = recipe_typekw(tokens, &backupiter, recipe, recipe_len);
@@ -671,8 +672,8 @@ astnode_t* recipe_class_member(list_t* tokens, size_t* iter, tokentype_t recipe[
       if(id)free_node(id);
       if (memtype)
         free_node(memtype); 
-      LOG(VERBOSE, "parse_by_recipe.TOKEN_CLASS_MEMBER_DEF stopped\n");
-      LOG(VERBOSE, "iter=%zu,*iter=%s\n",*iter,tokentype_tostr(tok->token_type));      
+      do_log(VERBOSE,PARSER_OUTPUT, "parse_by_recipe.TOKEN_CLASS_MEMBER_DEF stopped\n");
+      do_log(VERBOSE,PARSER_OUTPUT, "iter=%zu,*iter=%s\n",*iter,tokentype_tostr(tok->token_type));      
       return members;
     }
     // skip the semicolon
@@ -712,13 +713,13 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
         got = recipes[j].chef(tokens, &backupiter, recipe, recipe_len);
 
 	token_t* tok=list_get(tokens, backupiter);        
-	LOG(VERBOSE, "backupiter=%zu,type=%d,%s\n",backupiter,tok->token_type,tokentype_tostr(tok->token_type));
+	do_log(VERBOSE,PARSER_OUTPUT, "backupiter=%zu,type=%d,%s\n",backupiter,tok->token_type,tokentype_tostr(tok->token_type));
 	if(got){
           list_append(&collected, &got);
 	  break;
         } else {
 	  // invalid token array
-          LOG(VERBOSE, "parse_by_recipe getting %s failed.\n",
+          do_log(VERBOSE,PARSER_OUTPUT, "parse_by_recipe getting %s failed.\n",
               tokentype_tostr(recipe[i]));
           free_list(&collected);
 	  return NULL;
@@ -732,8 +733,9 @@ list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size
       }else{
         // invalid token array
         token_t *tokk = list_get(tokens, backupiter);
-	LOG(VERBOSE, "parse_by_recipe getting %s failed, met %s.\n",
-	    tokentype_tostr(recipe[i]),tokentype_tostr(tokk->token_type));
+	tokentype_t tktp = tokk? tokk->token_type:TOKEN_NONE;
+	do_log(VERBOSE,PARSER_OUTPUT, "parse_by_recipe getting %s failed, met %s.\n",
+	    tokentype_tostr(recipe[i]),tokentype_tostr(tktp));
 	free_list(&collected);
 	return NULL;
       }
@@ -960,20 +962,20 @@ static syntax_rule_t syntaxes[] = {
 
 astnode_t *parse_statement(list_t *tokens, size_t *iter) {
   token_t* tok=list_get(tokens, *iter);
-  LOG(VERBOSE, "=====================\nnow parsing line %zu\n",tok->position.line);
+  do_log(VERBOSE,PARSER_OUTPUT, "=====================\nnow parsing line %zu\n",tok->position.line);
   for (size_t i=0; i < sizeof(syntaxes)/sizeof(syntax_rule_t); ++i) {
     size_t backup_iter = *iter;
     list_t *collected = parse_by_recipe(tokens, &backup_iter, syntaxes[i].recipe,
                                         syntaxes[i].recipe_len);
     if(!collected){
-      LOG(VERBOSE, "parsing with %s failed.\n", syntaxes[i].name);
+      do_log(VERBOSE,PARSER_OUTPUT, "parsing with %s failed.\n", syntaxes[i].name);
       continue;
     }
     astnode_t *node = syntaxes[i].builder(collected, tokens, &backup_iter, tok->position);
     free_list(collected);
     free(collected);
     if(node){
-      LOG(VERBOSE, "parsed %s.\n",syntaxes[i].name);
+      do_log(VERBOSE,PARSER_OUTPUT, "parsed %s.\n",syntaxes[i].name);
       *iter=backup_iter;
       return node;
     }

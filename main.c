@@ -18,7 +18,11 @@ void print_intercode(intercode_t* code){
   printf("%s \t\t%s,\t%s,\t%s\n", codetype_tostr(code->type), codeop_fmt(code->op1),codeop_fmt(code->op2),codeop_fmt(code->op3));
 }
 
-void print_node(astnode_t* node, int indent){
+void print_node(astnode_t *node, int indent) {
+  if (!node) {
+    printf("(null)\n");
+    return;
+  }
   printf("%*s%s=%s@%d type %d\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer, node->value_type);
   if(node->left)
     print_node(node->left, indent+2); 
@@ -164,10 +168,12 @@ int main(int argc, char** argv){
   // free the source
   free(source);
 #ifdef DEBUG
-  for (size_t i=0; i < tokens.len; ++i) {
-    token_t* tok=list_get(&tokens, i);
-    printf("(%s, %s, line %zu, col %zu)\n",tokentype_tostr(tok->token_type), tok->value,
-	   tok->position.line, tok->position.column);
+  if (is_log_part_enabled(LEXER_RESULT)) {
+    for (size_t i=0; i < tokens.len; ++i) {
+      token_t* tok=list_get(&tokens, i);
+      printf("(%s, %s, line %zu, col %zu)\n",tokentype_tostr(tok->token_type), tok->value,
+	     tok->position.line, tok->position.column);
+    } 
   }
 #endif
   astnode_t *asttree = do_parse(&tokens);
@@ -184,14 +190,16 @@ int main(int argc, char** argv){
   }
   
 #ifdef DEBUG
-  print_node(asttree, 0);
+  //print_node(asttree, 0);
 #endif
   list_t ic1=gen_intercode(asttree);
   list_t intercodes=process_intercode(&ic1);
 #ifdef DEBUG
-  for (size_t i=0; i < intercodes.len; ++i) {
-    intercode_t *code = list_get(&intercodes, i);
-    print_intercode(code);
+  if (is_log_part_enabled(INTERCODE_RESULT)) {
+    for (size_t i=0; i < intercodes.len; ++i) {
+      intercode_t *code = list_get(&intercodes, i);
+      print_intercode(code);
+    }
   }
 #endif
   platform_info_t platform = {.abi = abi, .architecture = arch};
@@ -213,7 +221,7 @@ int main(int argc, char** argv){
   if(!asmcode){
     return -1;
   }
-  LOG(VERBOSE, "asm:\n%s",asmcode);
+  do_log(VERBOSE, ASMGEN_RESULT, "asm:\n%s",asmcode);
   
   FILE* fw=fopen(output, "w");
   if(!fw){

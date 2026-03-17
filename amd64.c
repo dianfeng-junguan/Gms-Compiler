@@ -85,6 +85,13 @@ void amd64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       ASM("%s: dq %s\n%%define %s qword [%s]\n",op1, op2,
 	  op1, op1);
       break;
+    case CODE_DECL_ARG:{
+      // mov args passed by registers to stackmem
+      // TODO: consider spilled args      
+      char *reg = abi.arg_regs[intercode->op2.num_value];
+      ASM("mov %s,%s\n", op1, reg);
+      break;
+    }      
     case CODE_DATA:{
       char* data=op2;
       char* width="dq";
@@ -183,26 +190,43 @@ void amd64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       break;
     }
     case CODE_MUL: {
-      ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",op1);
+      // if the dest operand is one of them, we do not need to store them
+      bool rdxpush = (strcmp("rdx", op3) == 0 ? false : true);      
+      bool raxpush = (strcmp("rax", op3) == 0 ? false : true);
+      if(rdxpush)ASM("push rdx\n");
+      if(raxpush)ASM("push rax\n");
+      ASM("mov rax,%s\nmov rdx,0\n",op1);
       ASM("mul %s\n",op2);
-      ASM("mov %s,rax\n",op3);
-      ASM("pop rax\npop rdx\n");
+      ASM("mov %s,rax\n", op3);
+      if(raxpush)ASM("pop rax\n");
+      if(rdxpush)ASM("pop rdx\n");      
       break;
     }
     case CODE_DIV: {
-      ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",op1);
+      // if the dest operand is one of them, we do not need to store them
+      bool rdxpush = (strcmp("rdx", op3) == 0 ? false : true);      
+      bool raxpush = (strcmp("rax", op3) == 0 ? false : true);
+      if(rdxpush)ASM("push rdx\n");
+      if(raxpush)ASM("push rax\n");
+      ASM("mov rax,%s\nmov rdx,0\n",op1);
       ASM("div %s\n",op2);
       ASM("mov %s,rax\n",op3);
-      ASM("pop rax\npop rdx\n");
-      break;
+      if(raxpush)ASM("pop rax\n");
+      if(rdxpush)ASM("pop rdx\n");
       break;
     }
     
     case CODE_MOD: {
-      ASM("push rdx\npush rax\nmov rdx,0\nmov rax,%s\n",op1);
+      // if the dest operand is one of them, we do not need to store them
+      bool rdxpush = (strcmp("rdx", op3) == 0 ? false : true);      
+      bool raxpush = (strcmp("rax", op3) == 0 ? false : true);
+      if(rdxpush)ASM("push rdx\n");
+      if(raxpush)ASM("push rax\n");
+      ASM("mov rax,%s\nmov rdx,0\n",op1);
       ASM("div %s\n",op2);
       ASM("mov %s,rdx\n",op3);
-      ASM("pop rax\npop rdx\n");
+      if(raxpush)ASM("pop rax\n");
+      if(rdxpush)ASM("pop rdx\n");
       break;
       break;
     }
@@ -266,7 +290,7 @@ void amd64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
         ASM("lea rsi,[rbp-%zu]\nlea rdi,[rbp-%zu]\n", (size_t)offset2, (size_t)offset1);
         ASM("mov rcx,%zu\n", objsz);        
 	ASM("rep movsb\n");
-        ASM("pop rcx\npop rdi\npop rsi\\n");
+        ASM("pop rcx\npop rdi\npop rsi\n");
 	break;        
       }
       // check if both operands are mems (invalid)
