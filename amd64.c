@@ -107,10 +107,10 @@ void amd64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
       ASM("global %s\n",op1);
       ASM("%s:\n",op1);
       ASM("push rbp\nmov rbp,rsp\n");
-      for (size_t  i=0; i<abi.callee_saved_regs_num; i++) {
+      /*for (size_t  i=0; i<abi.callee_saved_regs_num; i++) {
 	ASM("push %s\n", abi.callee_saved_regs[i]);
 	grow_stack(&current_sf, 8);
-      }
+	}*/
       // collect ALLOC_LOCALs
       size_t i = iter;
       size_t local_tot_sz = 0;
@@ -132,10 +132,10 @@ void amd64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
     case CODE_RETURN: {
       if(intercode->op1.type!=OPERAND_EMPTY){
 	ASM("mov rax,%s\n",op1);
-      }
+      }/*
       for (size_t i = 0; i < abi.callee_saved_regs_num; i++) {
 	ASM("pop %s\n",abi.callee_saved_regs[abi.callee_saved_regs_num-1-i]);
-      }
+	}*/
       ASM("mov rsp,rbp\npop rbp\nret\n");
       break;
     }

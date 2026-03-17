@@ -287,6 +287,11 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     push_code(code_list, CODE_DEF_FUNC_END, KEEP(funcname), EMPTY, EMPTY);
     break;
   }
+  case NODE_TYPECONVERT: {
+    // just skip it.    
+    return gen_node(node->right, code_list, 0, 0);
+    break;
+  }
   case NODE_RETURN: {
     tmpvar_t tmpv;
     if (node->left) {
