@@ -77,6 +77,8 @@ typedef enum {
   // filling the class fields  
   NODE_CLASSFILL,
   
+  NODE_TYPECONVERT,
+  
 } astnode_type_t;
 
 typedef struct symtab{

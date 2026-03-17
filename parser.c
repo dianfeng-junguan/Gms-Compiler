@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <string.h>
 typedef astnode_t *(*statment_parser)(list_t *tokens, size_t *iter);
+astnode_t *recipe_typekw(list_t *tokens, size_t *iter, tokentype_t recipe[],
+                         size_t recipe_len);
 static size_t node_create_counter=0;
 static size_t node_free_counter=0;
 void free_node(astnode_t *node) {
@@ -122,10 +124,30 @@ astnode_t *prefix_handler_openparen(token_t *lefttoken, list_t *tokens,
                                     size_t *iter) {
   size_t backupiter=*iter+1;
   astnode_t *inner = parse_expr(tokens, &backupiter, 0);
-  if (peek_check_token(tokens, backupiter, CLOSEPAREN)) {
-    backupiter++;
-    *iter=backupiter;
-    return inner;
+  if (inner) {
+    if (peek_check_token(tokens, backupiter, CLOSEPAREN)) {
+      backupiter++;
+      *iter=backupiter;
+      return inner;
+    }
+  } else {
+    // go back    
+    backupiter = *iter+1;
+    // try type conversion
+    astnode_t *conv = recipe_typekw(tokens, &backupiter, NULL, 0);
+    if (conv && peek_check_token(tokens, backupiter, CLOSEPAREN)) {
+      backupiter++;
+      // now parse the expression forward
+      astnode_t *converted = parse_expr(tokens, &backupiter, 0);
+      if (!converted) {
+        cry_errorf(SENDER_PARSER, conv->position, "invalid expression\n");
+	free_node(conv);
+	return NULL;
+      }
+      *iter = backupiter;
+      return create_node(NODE_TYPECONVERT, conv, converted, NULL, conv->position);
+    }
+    cry_errorf(SENDER_PARSER, lefttoken->position, "unknown expression inside the paren\n");
   }
   cry_error(SENDER_PARSER, "missing closing parenthesis", lefttoken->position);
   return NULL;
@@ -190,6 +212,7 @@ static astnode_type_t mapping[] = {
     [COMMA] = NODE_COMMALIST,
 
     [OPENPAREN] = NODE_FUNCCALL,
+    [CLOSEPAREN] = NODE_TYPECONVERT,
     [OPENBRACE] = NODE_CLASSFILL,
 };
 
@@ -231,6 +254,17 @@ INFIXHDLR_TWO(AND);
 INFIXHDLR_TWO(OR);
 INFIXHDLR_TWO(NOT);
 
+astnode_t *infix_handler_CLOSEPAREN(astnode_t *left,
+				   list_t *tokens, size_t *iter){
+  // type conversion
+  astnode_t *right = parse_expr(tokens, iter, 0);  
+  if(!right){
+    cry_error(SENDER_PARSER, "missing expr of type conversion",
+              get_last_token(tokens, *iter)->position);
+    return NULL;
+  }
+  return create_node(mapping[CLOSEPAREN], left, right, NULL, left->position);
+}
 astnode_t *infix_handler_OPENPAREN(astnode_t *left,
                                list_t *tokens, size_t *iter) {
   // we need to parse arglist here rather than commalist
@@ -304,6 +338,8 @@ infix_handler_t infix_handlers[50] = {
     [NOT_EQUAL] = infix_handler_NOT_EQUAL,
     // funccall
     [OPENPAREN] = infix_handler_OPENPAREN,
+    // type conversion    
+    [CLOSEPAREN] = infix_handler_CLOSEPAREN,
     // object def
     [OPENBRACE] = infix_handler_OPENBRACE,
     // indexing

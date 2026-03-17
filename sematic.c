@@ -416,6 +416,26 @@ bool ctypeinf_checker(astnode_t *node, compiler_global_data_t *globals) {
   }
   return true;
 }
+
+bool exptypconv_trigger(astnode_t *node) {
+  return node->node_type==NODE_TYPECONVERT;
+}
+bool exptypconv_checker(astnode_t *node, compiler_global_data_t *globals) {
+  // check expression subnode
+  if(!check_node(node->right, globals))return false;
+  // check if this conversion is allowed
+  symbol_type_index_t beftyp = node->right->value_type;
+  symbol_type_t *befst=list_get(&type_table, beftyp);
+  astnode_t *beftt = befst->type_tree;  
+  symbol_type_index_t convertedtyp = get_type_from_typetree(node->left);
+  symbol_type_t *convertedst=list_get(&type_table, convertedtyp);
+  astnode_t *convertedtt = convertedst->type_tree;
+  if (implici) {
+    
+  }
+  node->value_type = convertedtyp;
+  return true;  
+}
 bool sym_undef_trigger(astnode_t *node) {
   return node->node_type==NODE_IDENTIFIER;
 }
@@ -699,6 +719,9 @@ static rule_t sematic_rules[] = {
     {.name = "undefined symbol",
      .trigger = sym_undef_trigger,
      .checker = sym_undef_checker},
+    {.name = "explicit type conversion",
+     .trigger = exptypconv_trigger,
+     .checker = exptypconv_checker},
     {.name = "consistent left and right value type",
      .trigger = incontype_trigger,
      .checker = incontype_checker},

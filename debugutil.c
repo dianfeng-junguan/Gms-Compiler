@@ -124,6 +124,7 @@ const char* get_nodetype_str(astnode_type_t type) {
     case NODE_TYPEKW: return "NODE_TYPEKW";
     case NODE_CLASSMEMBER: return "NODE_CLASSMEMBER";
     case NODE_CLASSFILL: return "NODE_CLASSFILL";
+    case NODE_TYPECONVERT: return "NODE_TYPECONVERT";
     default: return "UNKNOWN_astnode_type_t";
   }
 }

@@ -170,7 +170,10 @@ int main(int argc, char** argv){
 	   tok->position.line, tok->position.column);
   }
 #endif
-  astnode_t *asttree=do_parse(&tokens);
+  astnode_t *asttree = do_parse(&tokens);
+  if (!asttree) {
+    return -1;
+  }
   if (PARSER_OUTPUTTREE) {
     print_node(asttree, 0);
   }
