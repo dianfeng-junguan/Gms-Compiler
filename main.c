@@ -126,7 +126,7 @@ int main(int argc, char** argv){
   }
   FILE* f=fopen(input, "r");
   if(!f){
-    printf("failed open input file %s",input);
+    printf("failed to open input file %s",input);
     perror(":");
     return -1;
   }
