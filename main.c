@@ -160,13 +160,15 @@ int main(int argc, char** argv){
   compiler_global_data_t globals;
   init_compiler_global_data(&globals);
   init_sematic();
+
+  int retv=0;
   list_t tokens = do_lex(source);
   if (!preprocess_tokens(&tokens,source_dir)) {
-    free(source);    
-    return -1;
-  }  
-  // free the source
-  free(source);
+    retv=-1;
+    goto free_source;
+  }
+  // free the source_dir variable
+  free(source_dir);
 #ifdef DEBUG
   if (is_log_part_enabled(LEXER_RESULT)) {
     for (size_t i=0; i < tokens.len; ++i) {
@@ -178,15 +180,18 @@ int main(int argc, char** argv){
 #endif
   astnode_t *asttree = do_parse(&tokens);
   if (!asttree) {
-    return -1;
+    retv=-1;
+    goto free_tokens;
   }
-  if (PARSER_OUTPUTTREE) {
+  if (is_log_part_enabled(PARSER_OUTPUTTREE)) {
     print_node(asttree, 0);
   }
-  if (!asttree || !(do_sematic(asttree,&globals))) {
+  int sematic_res=do_sematic(asttree,&globals);
+  if (!sematic_res) {
     print_node(asttree, 0);
     printf("compilation failed\n");
-    return -1;
+    retv=-1;
+    goto free_sematic;
   }
   
 #ifdef DEBUG
@@ -219,7 +224,8 @@ int main(int argc, char** argv){
   
   
   if(!asmcode){
-    return -1;
+    retv=-1;
+    goto free_ir;
   }
   do_log(VERBOSE, ASMGEN_RESULT, "asm:\n%s",asmcode);
   
@@ -230,9 +236,21 @@ int main(int argc, char** argv){
   }
   fwrite(asmcode, strlen(asmcode), 1, fw);
   fclose(fw);
-  
+free_asmcode:
   //release the used mem
   free(asmcode);
+free_ir:
+  free_list(&ic1);
+  free_list(&intercodes);
+free_sematic:
+  sematic_dispose_resources();
+free_ast:
+  free_node(asttree);
+free_tokens:
+  free_list(&tokens);
+free_source:
+  // free the source
+  free(source);
   free_rest();
   return 0;
 }

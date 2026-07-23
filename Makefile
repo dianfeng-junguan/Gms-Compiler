@@ -3,9 +3,10 @@ all: tool compiler
 compiler:
 	make -C bin
 tool: toolgen
-	bin/gen > debugutil.c
+	bin/gen.exe > debugutil.c
 toolgen:
-	gcc tool/gen.c -o bin/gen -g
+	make -C bin gen
+# 	g++ tool/gen.cpp -o bin/gen -g
 run:
 	bin/GMS_COMPILER -i bin/test.gms -o bin/a.asm
 	nasm bin/a.asm -o bin/a.o -g -felf64

@@ -30,7 +30,7 @@ astnode_t *create_node(astnode_type_t type, astnode_t *left, astnode_t *right,
   node->right = right;
   if(value){
       size_t slen = strlen(value);
-      node->value = malloc(slen + 1);
+      node->value = myalloc(slen);
       strcpy(node->value, value);
   }else{
     node->value=NULL;
@@ -71,8 +71,7 @@ typedef astnode_t *(*infix_handler_t)(astnode_t *left, list_t *tokens, size_t* i
 astnode_t *prefix_handler_id(token_t *lefttoken, list_t *tokens, size_t *iter) {
   // do_log(VERBOSE,PARSER_OUTPUT, "%s ",lefttoken->value);
   (*iter)++;
-  char* cloned=clone_str(lefttoken->value);
-  return create_node(NODE_IDENTIFIER, NULL, NULL, cloned, lefttoken->position);
+  return create_node(NODE_IDENTIFIER, NULL, NULL, lefttoken->value, lefttoken->position);
 }
 astnode_t* prefix_handler_const(token_t *lefttoken, list_t *tokens, size_t* iter){
   // do_log(VERBOSE,PARSER_OUTPUT, "%s ",lefttoken->value);
@@ -98,7 +97,7 @@ astnode_t* handler_addsub(astnode_type_t type,astnode_t* lhs, astnode_t* rhs){
     astnode_t *left = create_node(                                             \
         righttoken->token_type == IDENTIFIER ? NODE_IDENTIFIER                 \
                                              : NODE_CONSTANT,                  \
-        NULL, NULL, clone_str(righttoken->value), righttoken->position);       \
+        NULL, NULL, righttoken->value, righttoken->position);       \
     (*iter)+=2;                                                                 \
     return handler_addsub(NODE_##nodetype_noprefix, NULL, left);               \
   }
@@ -499,7 +498,7 @@ astnode_t *recipe_typekw(list_t *tokens, size_t *iter, tokentype_t recipe[],
 	goto freenode;
       }
       typeexpr_root = create_node(NODE_TYPEKW, NULL, NULL,
-                                  clone_str(tok->value), tok->position);
+                                  tok->value, tok->position);
       assert(typeexpr_root);      
       met_basictype=true;
       break;
@@ -797,8 +796,8 @@ astnode_t* parse_elseif(list_t *collected, list_t *tokens, size_t *iter, filepos
   astnode_t *holder = create_node(NODE_LEAFHOLDER, statements, branch,
                                   NULL, pos);
 
-  astnode_t *elseifnode =
-      create_node(NODE_ELSEIF, condition, holder, NULL, pos);
+  // astnode_t *elseifnode =
+  //     create_node(NODE_ELSEIF, condition, holder, NULL, pos);
   if(elseif_collected){
     free_list(elseif_collected);
     free(elseif_collected);

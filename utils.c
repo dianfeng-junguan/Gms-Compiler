@@ -116,7 +116,10 @@ char* myalloc(size_t len){
   append(&alloced_mems, &cloned);
   return cloned;
 }
-
+char* myrealloc(char* prev, size_t new_size){
+  myfree(prev);
+  return myalloc(new_size);
+}
 char* clone_str(char* str){
   size_t len=strlen(str);
   char* cloned=myalloc(len+1);
@@ -126,12 +129,18 @@ char* clone_str(char* str){
 
 void myfree(char* str){
   for (size_t i=0; i < alloced_mems.len; ++i) {
-    if(list_get(&alloced_mems, i)==str){
+    char* ptr=*(char**)list_get(&alloced_mems, i);
+    if(ptr==str){
+      free(ptr);
       list_remove(&alloced_mems, i);
     }
   }
 }
 void free_rest(){
+  for (size_t i=0; i < alloced_mems.len; ++i) {
+    char* alloced_ptr=*(char**)list_get(&alloced_mems, i);
+    free(alloced_ptr);
+  }
   free_list(&alloced_mems);
 }
 void list_concat(list_t* dest,list_t* src){
@@ -151,7 +160,7 @@ cstring_t create_string(){
 cstring_t string_from(const char *conststr){
   cstring_t cstr = create_string();
   cstr.len = strlen(conststr);
-  cstr.data = malloc(cstr.len + 1);
+  cstr.data = myalloc(cstr.len);
   memset(cstr.data, 0, cstr.len + 1);  
   assert(cstr.data);
   strcpy(cstr.data, conststr);

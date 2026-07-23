@@ -46,6 +46,12 @@ bool check_arglist(astnode_t *commalist, list_t *arglist, filepos_t pos);
   ((a == va && b == vb) ||			\
    (b == va && a == vb))
 
+void sematic_free_type_table(){
+  free_list(&type_table);
+}
+void sematic_dispose_resources(){
+  sematic_free_type_table();
+}
 /// check if the two types can be implicitly converted to each other.
 bool type_implicitly_convertable(symbol_type_index_t a, symbol_type_index_t b){
   // first check some intrinsic-type-consisted combinations
@@ -129,7 +135,7 @@ static astnode_t* clone_tree(astnode_t *tree){
   if (!tree) {
     return NULL;
   }
-  astnode_t *newone = malloc(sizeof(astnode_t));
+  astnode_t *newone = (astnode_t*)myalloc(sizeof(astnode_t));
   assert(newone);
   memcpy(newone, tree, sizeof(astnode_t));
   newone->left = clone_tree(tree->left);

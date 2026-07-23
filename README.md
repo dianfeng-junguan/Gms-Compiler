@@ -77,7 +77,7 @@ Most operators are the same as C.
 Supported operators:
 
 - plus(+), minus(-), multiply(*), divide(/), mod(%)
-- parenthesis (( and ))
+- parentheses `(` and `)`
 - comma(,), it returns the value of the rightest expression
 - assign(=)
 - equal(==), greater(>), less(<), greater equal(>=), less equal(<=), not equal(!=)

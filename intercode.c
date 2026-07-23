@@ -26,6 +26,7 @@ char *mklabel() {
   char *lbl = malloc(5 + digits + 1);
   strcpy(lbl, "label");
   lbl = strcat(lbl, number);
+  free(number);
   labelid++;
   return lbl;
 }

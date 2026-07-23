@@ -20,5 +20,7 @@ bool is_symtab_dup(list_t* syms, char* name);
 void init_sematic();
 size_t get_typesize(symbol_type_index_t typeindex);
 size_t count_element(astnode_t* commalist);
+
+void sematic_dispose_resources();
 /// list_t<symbol_type_t>
 extern list_t type_table;

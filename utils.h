@@ -102,6 +102,7 @@ void init_my_allocator();
 char* clone_str(char* str);
 char *myalloc(size_t len);
 void myfree(char *str);
+char* myrealloc(char* prev, size_t new_size);
 void free_rest();
 // ==================================
 

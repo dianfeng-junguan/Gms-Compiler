@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <regex.h>
 
 
 bool string_begin(char c) { return c == '\"'; }

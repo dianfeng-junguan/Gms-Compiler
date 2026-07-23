@@ -45,8 +45,12 @@ bool preprocess_tokens(list_t* tokens, char* source_dir){
       list_t newtoks = do_lex(source);
       free(source);
       // insert
-      list_remove(tokens, i);      
+      token_t* tok=list_get(tokens, i);
       list_remove(tokens, i);
+      free_token(tok);
+      tok=list_get(tokens, i);
+      list_remove(tokens, i);
+      free_token(tok);
       for (size_t j=0; j<newtoks.len; j++) {
 	list_insert(tokens, i+j, list_get(&newtoks, j));
       }
