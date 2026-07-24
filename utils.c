@@ -6,7 +6,68 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-list_t create_list(size_t capacity, size_t element_size){
+
+
+void mem_list_init(list_t* list, size_t capacity, size_t element_size){
+  if (capacity<=0) {
+    capacity=1;
+  }
+  *list=(list_t){
+    .element_size=element_size,
+    .capacity=capacity,
+    .len=0,
+    .array=(void*)malloc(capacity*element_size)
+  };
+  assert(list->array!=0);
+}
+void mem_list_append(list_t *list, void *element){
+  // first check if it's full
+  if(list->len==list->capacity){
+    //realloc
+    list->array=realloc(list->array,list->capacity*list->element_size*2);
+    list->capacity*=2;
+  }
+  memcpy(list->array+list->len*list->element_size, element, list->element_size);
+  list->len++;
+}
+void mem_list_insert(list_t *list, size_t position, void* element){
+  assert(list->len > position);
+  // must panic when assert fails bc it means mistakes in code
+  // check if it is capable of containing the grown len
+  if (list->capacity<=list->len+1) {
+    // grow the capacity
+    list->array=realloc(list->array, list->capacity*list->element_size*2);
+    list->capacity*=2;
+  }
+  memmove(list->array + list->element_size * (1 + position),
+          list->array + list->element_size * position,
+          list->element_size * (list->len - position));
+  memcpy(list->array + list->element_size * position, element,
+         list->element_size);
+  list->len++;
+}
+void mem_list_remove(list_t *list, size_t index){
+  // check if the index overbounds
+  assert(index<list->len);
+  // compact the elements
+  memmove(list->array + list->element_size * index,
+         list->array + list->element_size * (index + 1),
+         (list->len-index-1)*list->element_size);
+  if(list->len<list->capacity/2){
+    list->array=realloc(list->array, list->capacity*list->element_size/2);
+    list->capacity/=2;
+  }
+  list->len--;  
+}
+
+void mem_list_free(list_t *list){
+  free(list->array);
+  list->array=0;
+  list->len=list->capacity=0;
+}
+#define mem_list_get list_get
+
+list_t list_create(size_t capacity, size_t element_size){
   if (capacity<=0) {
     capacity=1;
   }
@@ -14,7 +75,7 @@ list_t create_list(size_t capacity, size_t element_size){
     .element_size=element_size,
     .capacity=capacity,
     .len=0,
-    .array=(void*)malloc(capacity*element_size)
+    .array=(void*)myalloc(capacity*element_size)
   };
   assert(list.array!=0);
   return list;
@@ -24,7 +85,7 @@ void list_append(list_t *list, void *element){
   // first check if it's full
   if(list->len==list->capacity){
     //realloc
-    list->array=realloc(list->array, list->capacity*list->element_size*2);
+    list->array=myrealloc(list->array,list->capacity*list->element_size*2);
     list->capacity*=2;
   }
   memcpy(list->array+list->len*list->element_size, element, list->element_size);
@@ -48,7 +109,7 @@ void list_insert(list_t *list, size_t position, void *element) {
   // check if it is capable of containing the grown len
   if (list->capacity<=list->len+1) {
     // grow the capacity
-    list->array=realloc(list->array, list->capacity*list->element_size*2);
+    list->array=myrealloc(list->array, list->capacity*list->element_size*2);
     list->capacity*=2;
   }
   memmove(list->array + list->element_size * (1 + position),
@@ -66,7 +127,7 @@ void list_remove(list_t *list, size_t index){
          list->array + list->element_size * (index + 1),
          (list->len-index-1)*list->element_size);
   if(list->len<list->capacity/2){
-    list->array=realloc(list->array, list->capacity*list->element_size/2);
+    list->array=myrealloc(list->array, list->capacity*list->element_size/2);
     list->capacity/=2;
   }
   list->len--;  
@@ -78,7 +139,7 @@ void *list_get(list_t *list, size_t index) {
   return list->array+list->element_size*index;
 } 
 void free_list(list_t* list){
-  free(list->array);
+  myfree(list->array);
   list->array=0;
   list->len=list->capacity=0;
 }
@@ -86,9 +147,10 @@ void free_list_dtor(list_t* list, void (*element_dtor)(void *element)){
   for (size_t i=0; i < list->len; ++i) {
     element_dtor(list->array+i*list->element_size);
   }
-  free(list->array);
-  list->array=0;
-  list->len=list->capacity=0;
+  free_list(list);
+  // free(list->array);
+  // list->array=0;
+  // list->len=list->capacity=0;
 }
 
 void list_copy(list_t* dest, list_t* src, copy_callback callback){
@@ -103,17 +165,20 @@ void list_copy(list_t* dest, list_t* src, copy_callback callback){
   }
 }
 void init_list(list_t* list, size_t capacity, size_t element_size){
-  *list=create_list(capacity, element_size);
+  *list=list_create(capacity, element_size);
 }
 
 list_t alloced_mems;
-void init_my_allocator() { init_list(&alloced_mems, 100, sizeof(char *)); }
+void init_my_allocator() { 
+  // we cannot use init_list here because the func itself relies on alloced_mems which is not initialzied here.
+  mem_list_init(&alloced_mems, 100, sizeof(char*));
+}
 
 char* myalloc(size_t len){
   char* cloned=malloc(len+1);
   assert(cloned);
   memset(cloned,0,len+1);
-  append(&alloced_mems, &cloned);
+  mem_list_append(&alloced_mems, &cloned);
   return cloned;
 }
 char* myrealloc(char* prev, size_t new_size){
@@ -129,19 +194,19 @@ char* clone_str(char* str){
 
 void myfree(char* str){
   for (size_t i=0; i < alloced_mems.len; ++i) {
-    char* ptr=*(char**)list_get(&alloced_mems, i);
+    char* ptr=*(char**)mem_list_get(&alloced_mems, i);
     if(ptr==str){
       free(ptr);
-      list_remove(&alloced_mems, i);
+      mem_list_remove(&alloced_mems, i);
     }
   }
 }
 void free_rest(){
-  for (size_t i=0; i < alloced_mems.len; ++i) {
-    char* alloced_ptr=*(char**)list_get(&alloced_mems, i);
-    free(alloced_ptr);
+  for (long i=alloced_mems.len-1; i >=0; i--) {
+    char* alloced_ptr=*(char**)mem_list_get(&alloced_mems, i);
+    myfree(alloced_ptr);
   }
-  free_list(&alloced_mems);
+  mem_list_free(&alloced_mems);
 }
 void list_concat(list_t* dest,list_t* src){
   for (size_t i=0; i<src->len; i++) {
@@ -241,4 +306,28 @@ void do_log(int level, int part, const char* fmt, ...){
 
 int is_log_part_enabled(log_parts part){
   return log_parts_switch[part];
+}
+
+
+/// init the arena.
+void arena_init(arena_t *arena,size_t size){
+  arena->allocated_size=0;
+  arena->size=size;
+  arena->base=malloc(size);
+  assert(arena->base);
+}
+/// alloc a memory block from the arena.
+void* arena_alloc(arena_t *arena, size_t size){
+  if(arena->size-arena->allocated_size<size){
+    return NULL;
+  }
+  char *ptr=arena->base+arena->allocated_size;
+  arena->allocated_size+=size;
+  return (void*)ptr;
+}
+/// free the whople arena.
+void arena_free(arena_t *arena){
+  free(arena->base);
+  arena->size=0;
+  arena->allocated_size=0;
 }

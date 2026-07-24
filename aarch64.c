@@ -507,8 +507,8 @@ void aarch64_translate(list_t *list_asm, list_t *ics, list_t *tmpvar_table,
     list_append(codes, &line);			\
   } while (0);
 char* aarch64_gen(list_t* intercodes,platform_info_t arch){
-  list_t asm_codes=create_list(20, sizeof(char*));
-  list_t tmpvar_table = create_list(6, sizeof(tmpvar_alloc_info_t));
+  list_t asm_codes=list_create(20, sizeof(char*));
+  list_t tmpvar_table = list_create(6, sizeof(tmpvar_alloc_info_t));
   abi_t abi = get_abi(arch.abi);
   // something
   // ASMU(&asm_codes, ".arch arm64\n");

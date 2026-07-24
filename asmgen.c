@@ -141,7 +141,7 @@ stackframe_t create_stackframe(){
   stackframe_t stk = {
       .start = 0,
       .end = 0,
-      .locals = create_list(10, sizeof(stackpos_local_t)),
+      .locals = list_create(10, sizeof(stackpos_local_t)),
   };
   return stk;  
 }

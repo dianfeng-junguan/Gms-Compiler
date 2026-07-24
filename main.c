@@ -249,7 +249,7 @@ free_sematic:
 free_ast:
   free_node(asttree);
 free_tokens:
-  free_list(&tokens);
+  FREE_LIST_DTOR(&tokens,free_token);
 free_source:
   // free the source
   free(source);

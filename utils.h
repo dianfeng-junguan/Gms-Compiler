@@ -10,6 +10,20 @@ typedef struct _filepos_t {
   size_t column;
 } filepos_t;
 
+/**
+  used to implement the arena allocator.
+*/
+typedef struct{
+  char* base;
+  size_t size;
+  size_t allocated_size;
+}arena_t;
+/// init the arena.
+void arena_init(arena_t *arena,size_t size);
+/// alloc a memory block from the arena.
+void* arena_alloc(arena_t *arena, size_t size);
+/// free the whople arena.
+void arena_free(arena_t *arena);
 /*
   the list is an array of pointers to the real data.
   when created it has a capacity. if it's full. it reallocates
@@ -49,12 +63,12 @@ void free_string(cstring_t *cstr);
 void string_sprintf(cstring_t* cstr, char* fmt, ...);
 
 
-list_t create_list(size_t capacity, size_t element_size);
+list_t list_create(size_t capacity, size_t element_size);
 /**
    initialzie the list.
    this will ignore the previous data of the initialized list, so store it elsewhere or release it before
    calling this.
-   do not use this after create_list. create_list and init_list do the same work.
+   do not use this after list_create. list_create and init_list do the same work.
  **/
 void init_list(list_t* list, size_t capacity, size_t element_size);
 

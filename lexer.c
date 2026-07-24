@@ -63,6 +63,7 @@ bool comment_after(char *str, list_t *tokens, filepos_t pos) {
     return false;
   }
   // we do not add comment token to tokenlist  
+  myfree(str);
   return true;  
 }
 bool number_begin(char c) { return isdigit(c); }
@@ -178,6 +179,7 @@ bool whitespace_allowed(char c, char *start, size_t offset) {
 }
 bool whitespace_after(char *str, list_t *tokens, filepos_t pos) {
   // we do not want the whitespace so we do nothing
+  myfree(str);
   return true;
 }
 static str_op_pair_t operators[] = {
@@ -319,7 +321,7 @@ list_t do_lex(char *str) {
   size_t len = strlen(str);
   size_t line = 0;
   size_t col = 0;
-  list_t tokens = create_list(100, sizeof(token_t));
+  list_t tokens = list_create(100, sizeof(token_t));
   while (ptr < len) {
     // todo :
     //  scan by a list

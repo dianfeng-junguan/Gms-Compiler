@@ -131,8 +131,8 @@ size_t get_member_offset(symbol_type_index_t object_type, char *membername) {
 }
 tmpvar_t gen_arrayfill(list_t* code_list, astnode_t *arrayfill){
   size_t nr_ele = count_element(arrayfill->left);
-  list_t tovisit = create_list(10, sizeof(astnode_t));
-  list_t eles = create_list(10, sizeof(astnode_t));
+  list_t tovisit = list_create(10, sizeof(astnode_t));
+  list_t eles = list_create(10, sizeof(astnode_t));
   size_t i = 0;
   append(&tovisit, arrayfill->left);
   while (i<tovisit.len) {
@@ -181,7 +181,7 @@ void gen_classfill(list_t *code_list, astnode_t *node, tmpvar_t *tmpvar) {
   symbol_type_t *classtype = list_get(&type_table, node->value_type);
   list_t *members=&classtype->members;
   assert(classtype);
-  list_t tovisit = create_list(20, sizeof(astnode_t *));
+  list_t tovisit = list_create(20, sizeof(astnode_t *));
   append(&tovisit, &node->left);
   append(&tovisit, &node->right);
   int i = 0;
@@ -491,7 +491,7 @@ tmpvar_t gen_node(astnode_t *node, list_t *code_list, int tmpnum, int layer) {
     // gen arglist first
     // keep the tmpvars used to push args used until we finished storing the
     // return value
-    list_t tmp_vars = create_list(10, sizeof(tmpvar_t));
+    list_t tmp_vars = list_create(10, sizeof(tmpvar_t));
     size_t tmpargnum =
       gen_arglist_node(node->right, code_list, tmpnum, layer + 1, &tmp_vars);
     tmpnum += tmpargnum;
@@ -635,7 +635,7 @@ void put_global_var_inits(list_t *code_list, astnode_t *ast, symbol_table_t* glo
   }
 }
 list_t gen_intercode(astnode_t *ast) {
-  list_t codes = create_list(20, sizeof(intercode_t));
+  list_t codes = list_create(20, sizeof(intercode_t));
   // generate global symbols
   for (size_t i = 0; i < ast->syms->table.len; ++i) {
     symbol_t *sym = list_get(&ast->syms->table, i);
