@@ -21,12 +21,12 @@ char *mklabel() {
     id /= 10;
     digits++;
   }
-  char *number = malloc(digits + 1);
+  char *number = myalloc(digits);
   sprintf(number, "%d", labelid);
-  char *lbl = malloc(5 + digits + 1);
+  char *lbl = myalloc(5 + digits);
   strcpy(lbl, "label");
   lbl = strcat(lbl, number);
-  free(number);
+  myfree(number);
   labelid++;
   return lbl;
 }
@@ -666,30 +666,29 @@ operand_t imm_str(char *value) {
   operand_t op={.type=OPERAND_IMMEDIATE,.num_value=realv};
   return op;
 }
-char* codeop_fmt(operand_t op) {
+int codeop_fmt(char* fmt, size_t len, operand_t op) {
+  int dlen=0;
   switch (op.type) {
   case OPERAND_TMPVAR: {
-    cstring_t cstr = create_string();
-    string_sprintf(&cstr, "tmp@%d", op.tmpvalue.index);
-    return cstr.data;
+    dlen=snprintf(fmt, len, "tmp@%d", op.tmpvalue.index);
+    break;
   }
   case OPERAND_OFFSET: {
-    cstring_t cstr = create_string();
-    string_sprintf(&cstr, "[tmp@%d+%zu]", op.tmpvalue.index, op.offset);
-    return cstr.data;
+    dlen=snprintf(fmt, len, "[tmp@%d+%zu]", op.tmpvalue.index, op.offset);
     break;
   }
   case OPERAND_IMMEDIATE: {
-    cstring_t cstr = create_string();
-    string_sprintf(&cstr, "%llu", op.num_value);
-    return cstr.data;
+    dlen=snprintf(fmt,len, "%llu", op.num_value);
+    break;
   }
-  default:
-    return op.value;
+  default:break;
   }
-
+  return dlen;
 }
 void intercode_tostr(char *buf, intercode_t *code) {
-  sprintf(buf, "%s \t\t%s,\t%s,\t%s", codetype_tostr(code->type),
-          codeop_fmt(code->op1), codeop_fmt(code->op2), codeop_fmt(code->op3));  
+  int num=sprintf(buf, "%s \t\t", codetype_tostr(code->type));
+  if(num<0)return;
+  num+=codeop_fmt(buf+num,2048,code->op1);
+  num+=codeop_fmt(buf+num,2048,code->op2);
+  num+=codeop_fmt(buf+num,2048,code->op3);
 }

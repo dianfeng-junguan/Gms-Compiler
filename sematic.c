@@ -46,8 +46,13 @@ bool check_arglist(astnode_t *commalist, list_t *arglist, filepos_t pos);
   ((a == va && b == vb) ||			\
    (b == va && a == vb))
 
+static void free_symbol_type(symbol_type_t *stype){
+  if(stype->members.array){
+    free_list(&stype->members);
+  }
+}
 void sematic_free_type_table(){
-  free_list(&type_table);
+  FREE_LIST_DTOR(&type_table,free_symbol_type);
 }
 void sematic_dispose_resources(){
   sematic_free_type_table();
@@ -184,6 +189,9 @@ void copy_symbol(symbol_t* old, symbol_t* newt){
 void free_symbol(symbol_t* sym){
   FREEIFD(sym->name, myfree);
   sym->name=NULL;
+  if(sym->type == SYMBOL_FUNCTION){
+    free_list(&sym->args);
+  }
   FREEIFD(sym, myfree);
 }
 
@@ -928,6 +936,6 @@ symbol_t *find_symbol(symbol_table_t *symtab, char *name){
   return NULL;
 }
 void free_symtab(symbol_table_t *symtab) {
-  free_list(&symtab->table);
+  FREE_LIST_DTOR(&symtab->table, free_symbol);
   symtab->parent = NULL;  
 }

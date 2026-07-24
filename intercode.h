@@ -107,7 +107,7 @@ void push_code(list_t *code_list, intercode_type_t code_type, operand_t op1,
                operand_t op2, operand_t op3);
 void intercode_tostr(char* buf, intercode_t *ic);
 const char *codetype_tostr(intercode_type_t type);
-char* codeop_fmt(operand_t op);
+int codeop_fmt(char* fmt, size_t len, operand_t op);
 // the operand is an immediate value.
 #define IMM(immediate)                                                         \
   ((operand_t){.type = OPERAND_IMMEDIATE, .num_value = immediate})

@@ -15,7 +15,9 @@
 #include <string.h>
 
 void print_intercode(intercode_t* code){
-  printf("%s \t\t%s,\t%s,\t%s\n", codetype_tostr(code->type), codeop_fmt(code->op1),codeop_fmt(code->op2),codeop_fmt(code->op3));
+  static char buf[256];
+  intercode_tostr(buf, code);
+  puts(buf);
 }
 
 void print_node(astnode_t *node, int indent) {
@@ -232,7 +234,7 @@ int main(int argc, char** argv){
   FILE* fw=fopen(output, "w");
   if(!fw){
     perror("failed open output file");
-    return -1;
+    goto free_asmcode;
   }
   fwrite(asmcode, strlen(asmcode), 1, fw);
   fclose(fw);
@@ -251,6 +253,7 @@ free_tokens:
 free_source:
   // free the source
   free(source);
+  free_compiler_global_data(&globals);
   free_rest();
   return 0;
 }

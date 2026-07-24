@@ -7,4 +7,5 @@ typedef struct {
   
 }compiler_global_data_t;
 void init_compiler_global_data(compiler_global_data_t *globals);
+void free_compiler_global_data(compiler_global_data_t *globals);
 #endif
