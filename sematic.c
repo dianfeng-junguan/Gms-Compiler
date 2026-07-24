@@ -53,6 +53,7 @@ static void free_symbol_type(symbol_type_t *stype){
 }
 void sematic_free_type_table(){
   FREE_LIST_DTOR(&type_table,free_symbol_type);
+  free_list(&type_table);
 }
 void sematic_dispose_resources(){
   sematic_free_type_table();
@@ -749,9 +750,9 @@ bool class_def_checker(astnode_t *node,  compiler_global_data_t *globals) {
   symbol_type_t class_type = {
     .name = clone_str(node->left->value),
     .size=0,
-    .members = create_list(10, sizeof(name_type_pair_t))
+    .members = list_create(10, sizeof(name_type_pair_t))
   };  
-  list_t tovisit = create_list(32, sizeof(astnode_t *));
+  list_t tovisit = list_create(32, sizeof(astnode_t *));
   append(&tovisit, &node->right);
   size_t i = 0;
   size_t class_size = 0;  
@@ -855,7 +856,7 @@ void tree_to_list(astnode_t* node, list_t *list){
   }
 }
 bool check_arglist(astnode_t *commalist, list_t *arglist, filepos_t pos) {  
-  list_t passed_args = create_list(10, sizeof(astnode_t));
+  list_t passed_args = list_create(10, sizeof(astnode_t));
   tree_to_list(commalist, &passed_args);
   bool r=true;
   if(arglist->len!=passed_args.len){
@@ -917,7 +918,7 @@ size_t get_typesize(symbol_type_index_t typeindex) {
 symbol_table_t create_symtab(symbol_table_t *parent) {
   
   symbol_table_t symtab = {.parent = parent,
-                           .table = create_list(10, sizeof(symbol_t))};
+                           .table = list_create(10, sizeof(symbol_t))};
   return symtab;
 }
 void add_symbol(symbol_table_t *symtab, symbol_t sym){

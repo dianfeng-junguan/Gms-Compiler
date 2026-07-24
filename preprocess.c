@@ -46,11 +46,11 @@ bool preprocess_tokens(list_t* tokens, char* source_dir){
       free(source);
       // insert
       token_t* tok=list_get(tokens, i);
-      list_remove(tokens, i);
       free_token(tok);
+      list_remove(tokens, i);
       tok=list_get(tokens, i);
-      list_remove(tokens, i);
       free_token(tok);
+      list_remove(tokens, i);
       for (size_t j=0; j<newtoks.len; j++) {
 	list_insert(tokens, i+j, list_get(&newtoks, j));
       }

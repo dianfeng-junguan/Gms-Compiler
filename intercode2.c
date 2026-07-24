@@ -32,7 +32,7 @@ char* make_tmp_label(char* prefix){
    it arrages global var allocs and string constants to data section.
  **/
 list_t process_intercode(list_t* ic1){
-  list_t ic2=create_list(100, sizeof(intercode_t));
+  list_t ic2=list_create(100, sizeof(intercode_t));
   // create the data section first
   CODE(&ic2, CODE_DATA_SECTION ,EMPTY ,EMPTY ,EMPTY);
   // extract the global variable allocs
@@ -94,7 +94,7 @@ list_t process_intercode(list_t* ic1){
     int tmpvar_index;
     size_t last_used_index;
   }tmpvar_livespan_t;
-  list_t collected_tmpvars = create_list(50, sizeof(tmpvar_livespan_t));
+  list_t collected_tmpvars = list_create(50, sizeof(tmpvar_livespan_t));
   bool used_this_tmpvar(int tmpvar_index, operand_t op);
   // collect tmpvars
   // for each tmpvar, find the last usage of it and insert free code after it.  

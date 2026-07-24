@@ -548,7 +548,7 @@ done:
 freenode:
   ;  
   // free
-  list_t tovisit = create_list(10, sizeof(astnode_t *));
+  list_t tovisit = list_create(10, sizeof(astnode_t *));
   size_t i = 0;
   append(&tovisit, &typeexpr_root);
   while (i<tovisit.len) {
@@ -701,7 +701,7 @@ static recipe_t recipes[] = {
 // collect the tokens by the recipe. and if ordered expr, value or stmt, it
 // packs up tokens in the range into a node. 
 list_t* parse_by_recipe(list_t* tokens, size_t* iter, tokentype_t recipe[], size_t recipe_len){
-  list_t collected=create_list(5, sizeof(astnode_t*));
+  list_t collected=list_create(5, sizeof(astnode_t*));
   size_t backupiter=*iter;
   for (size_t i=0; i<recipe_len; ++i) {
     astnode_t *got = NULL;
