@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 typedef enum {
+  TOKEN_NONE,
   LET,
   FN,
   IF,
@@ -16,9 +17,12 @@ typedef enum {
   EXTERN,
   BREAK,
   CLASS,
+  INCLUDE,
   // type
   INT,
   STRING,
+  CHAR,
+  VOID,
   TYPE_KEYWORD,
   // whitespace
   WHITESPACE,
@@ -30,6 +34,8 @@ typedef enum {
   DOUBLE_QUOTE,
   OPENPAREN,
   CLOSEPAREN,
+  OPEN_SQUAREBRACKET,
+  CLOSE_SQUAREBRACKET,
   OPENBRACE,
   CLOSEBRACE,
   // operator

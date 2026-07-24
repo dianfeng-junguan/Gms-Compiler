@@ -3,11 +3,27 @@
 #include <stddef.h>
 typedef unsigned long long u64;
 typedef long long i64;
+#define SYMBOL_TYPE_INDEX_NULL -1
 typedef int symbol_type_index_t;
 typedef struct _filepos_t {
   size_t line;
   size_t column;
-}filepos_t;
+} filepos_t;
+
+/**
+  used to implement the arena allocator.
+*/
+typedef struct{
+  char* base;
+  size_t size;
+  size_t allocated_size;
+}arena_t;
+/// init the arena.
+void arena_init(arena_t *arena,size_t size);
+/// alloc a memory block from the arena.
+void* arena_alloc(arena_t *arena, size_t size);
+/// free the whople arena.
+void arena_free(arena_t *arena);
 /*
   the list is an array of pointers to the real data.
   when created it has a capacity. if it's full. it reallocates
@@ -22,18 +38,44 @@ typedef struct
   char* array;
   
 }list_t;
+// this is mainly used to make string operations more convenient.
+// moreover, this can be used to deal with wide char.
+typedef struct{
+  char *data;
+  size_t len;
+} cstring_t;
 
-list_t create_list(size_t capacity, size_t element_size);
+// create an empty CString
+cstring_t create_string();
+// create a CString from a raw char*. it does not consume the char*
+cstring_t string_from(const char *conststr);
+// create a CString by cloning a existing one.
+cstring_t string_clone(cstring_t* cstr);
+/// push a raw string into CString.
+void string_push(cstring_t *cstr, char *to_push);
+// copy a slice of CString.
+cstring_t string_substr(cstring_t *str, size_t start, size_t end);
+// take the nth char of the cstr.
+char string_nth(cstring_t* cstr, size_t n); 
+// free the CString
+void free_string(cstring_t *cstr);
+// cstring version of sprintf. it automatically extends the string.
+void string_sprintf(cstring_t* cstr, char* fmt, ...);
+
+
+list_t list_create(size_t capacity, size_t element_size);
 /**
    initialzie the list.
    this will ignore the previous data of the initialized list, so store it elsewhere or release it before
    calling this.
-   do not use this after create_list. create_list and init_list do the same work.
+   do not use this after list_create. list_create and init_list do the same work.
  **/
 void init_list(list_t* list, size_t capacity, size_t element_size);
 
 void list_append(list_t *list, void *element);
+void list_insert(list_t *list, size_t position, void* element);
 void list_remove(list_t *list, size_t index);
+void list_swap(list_t *list, size_t pos1, size_t pos2);
 void list_remove_shallow(list_t *list, size_t index);
 void *list_get(list_t *list, size_t index);
 
@@ -74,6 +116,7 @@ void init_my_allocator();
 char* clone_str(char* str);
 char *myalloc(size_t len);
 void myfree(char *str);
+char* myrealloc(char* prev, size_t new_size);
 void free_rest();
 // ==================================
 
@@ -86,15 +129,33 @@ void free_rest();
 #define NEED_LOG
 
 #define LOG_LEVEL VERBOSE
+#define INTERCODE_VERBOSE 1
 #ifdef NEED_LOG
-#define LOG(level, fmt, ...) if(level>=LOG_LEVEL)printf(fmt,##__VA_ARGS__);
+#define LOG(level, fmt, ...)                                                   \
+  if (level >= LOG_LEVEL)                                                      \
+    printf(fmt, ##__VA_ARGS__);
+void do_log(int level, int part, const char* fmt, ...);
+
 #define LOGERR(level, sender, pos, fmt, ...) if(level>=LOG_LEVEL)cry_errorf(sender, pos, fmt,##__VA_ARGS__);
 #else
 #define LOG(level, fmt, ...)
 #define LOGERR(level, sender, pos, fmt, ...)
 #endif
-
-
+#define ALIGNUP(v,alignment) ((v+alignment-1)&~(alignment-1))
+typedef enum {
+  INTERCODE_ALLOCSYM,
+  INTERCODE_RESULT,
+  SEMATIC_CHECK,
+  PARSER_OUTPUT,
+  PARSER_OUTPUTTREE,
+  LEXER_OUTPUT,
+  ASMGEN_ALLOCREG,
+  ASMGEN_ALLOCLOCAL,
+  ASMGEN_RESULT,
+  LEXER_RESULT,  
+  LEXER_PROCESS,  
+} log_parts;
+int is_log_part_enabled(log_parts part);
 #endif
 
 

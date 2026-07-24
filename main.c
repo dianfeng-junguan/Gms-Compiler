@@ -1,19 +1,30 @@
 #include "main.h"
 #include "stdio.h"
 #include "lexer.h"
+#include "preprocess.h"
 #include "parser.h"
 #include "sematic.h"
 #include "intercode.h"
 #include "intercode2.h"
 #include "asmgen.h"
+#include "status.h"
 #include "utils.h"
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+void print_intercode(intercode_t* code){
+  static char buf[256];
+  intercode_tostr(buf, code);
+  puts(buf);
+}
 
-void print_node(astnode_t* node, int indent){
+void print_node(astnode_t *node, int indent) {
+  if (!node) {
+    printf("(null)\n");
+    return;
+  }
   printf("%*s%s=%s@%d type %d\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer, node->value_type);
   if(node->left)
     print_node(node->left, indent+2); 
@@ -29,16 +40,19 @@ int main(int argc, char** argv){
   char* input=NULL;
   char* output="a.asm";
   char* arch_str="amd64";
-  char* abi_str="systemv";
+  char* abi_str="default";
   for (int i=1; i<argc; i++) {
     char* arg=argv[i];
     if(strcmp(arg, "-h")==0){
       // help
       printf("usage: GMS_COMPILER -i <input_file> [args..]\n");
       printf("available arguments:\n");
-      printf("-o <output_file>\t set the output file name. Set to a.asm if not provided.\n"
-	     "-m <arch>\t select the target architecture\n"
-	     "--abi <abi>\t select the ABI to use\n");
+      printf("-o <output_file>\t set the output file name. Set as a.asm if not "
+             "provided.\n"
+             "-m <arch>\t select the target architecture\n"
+             "\tavailable architectures: amd64 aarch64\n"
+             "--abi <abi>\t select the ABI to use\n"
+	     "\tavailable ABIs: systemv microsoft aarch64");
     }else if (strcmp(arg, "-i")==0) {
       i++;
       if(i>=argc){
@@ -76,15 +90,7 @@ int main(int argc, char** argv){
     printf("error: no input file\n");
     return 0;
   }
-  abitype_t abi=ABI_SYSTEMV;
-  if(strcmp(abi_str, "systemv")==0){
-    abi=ABI_SYSTEMV;
-  }else if(strcmp(abi_str, "microsoft")==0){
-    abi=ABI_MICROSOFT;
-  }else{
-    printf("error: unknown abi format\n");
-    return 0;
-  }
+
   arch_t arch=ARCH_AMD64;
   if(strcmp(arch_str, "amd64")==0){
     arch=ARCH_AMD64;
@@ -94,9 +100,35 @@ int main(int argc, char** argv){
     printf("error: unknown architecture format\n");
     return 0;
   }
+  abitype_t abi = (arch == ARCH_AARCH64 ? ABI_AARCH64 : ABI_SYSTEMV);
+  switch (arch) {
+  case ARCH_AMD64: {
+    if(strcmp(abi_str, "systemv")==0||strcmp(abi_str, "default")==0){
+      abi=ABI_SYSTEMV;
+    }else if(strcmp(abi_str, "microsoft")==0){
+      abi=ABI_MICROSOFT;
+    }else{
+      printf("error: unknown abi under this architecture\n");
+      return 0;
+    }
+    break;
+  }
+  case ARCH_AARCH64: {
+    if (strcmp(abi_str, "default")==0||strcmp(abi_str, "aarch64")==0) {
+      abi=ABI_AARCH64;
+    }else{
+      printf("error: unknown abi under this architecture\n");
+      return 0;
+    }
+    break;
+  }
+  default:
+    printf("error: unknown abi format\n");
+    return 0;
+  }
   FILE* f=fopen(input, "r");
   if(!f){
-    printf("failed open input file %s",input);
+    printf("failed to open input file %s",input);
     perror(":");
     return -1;
   }
@@ -104,8 +136,22 @@ int main(int argc, char** argv){
   size_t len=ftell(f);
   fseek(f, 0, SEEK_SET);
   char* source=malloc(len+1);
-  memset(source, 0, len+1);
-  size_t read=fread(source, len, 1, f);
+  memset(source, 0, len + 1);
+  size_t read = fread(source, len, 1, f);
+  fclose(f);
+  // get the path of the directory of the source code.
+  // we need to search for the included files based on this path.
+  char *pioneer = input+strlen(input);
+  while (pioneer>=input&&(*pioneer!='/'&&*pioneer!='\\')) {
+    pioneer--;
+  }
+  pioneer++;//include the /  
+  char *source_dir = "./";
+  if (pioneer>input) {
+    source_dir=malloc(pioneer-input+1);
+    strncpy(source_dir, input, pioneer-input);
+  }
+  source_dir[pioneer-input]='\0';
   /******************************************/
   /* if (read<1) {			    */
   /*   perror("error while reading file."); */
@@ -113,56 +159,101 @@ int main(int argc, char** argv){
   /*   return -2;			    */
   /* }					    */
   /******************************************/
+  compiler_global_data_t globals;
+  init_compiler_global_data(&globals);
   init_sematic();
-  list_t tokens=do_lex(source);
-  // free the source
-  free(source);
+
+  int retv=0;
+  list_t tokens = do_lex(source);
+  if (!preprocess_tokens(&tokens,source_dir)) {
+    retv=-1;
+    goto free_source;
+  }
+  // free the source_dir variable
+  free(source_dir);
 #ifdef DEBUG
-  for (size_t i=0; i < tokens.len; ++i) {
-    token_t* tok=list_get(&tokens, i);
-    printf("(%s, %s, line %zu, col %zu)\n",tokentype_tostr(tok->token_type), tok->value,
-	   tok->position.line, tok->position.column);
+  if (is_log_part_enabled(LEXER_RESULT)) {
+    for (size_t i=0; i < tokens.len; ++i) {
+      token_t* tok=list_get(&tokens, i);
+      printf("(%s, %s, line %zu, col %zu)\n",tokentype_tostr(tok->token_type), tok->value,
+	     tok->position.line, tok->position.column);
+    } 
   }
 #endif
-  astnode_t *asttree=do_parse(&tokens);
-
-  if (!asttree || !(do_sematic(asttree))) {
+  astnode_t *asttree = do_parse(&tokens);
+  if (!asttree) {
+    retv=-1;
+    goto free_tokens;
+  }
+  if (is_log_part_enabled(PARSER_OUTPUTTREE)) {
     print_node(asttree, 0);
-    return -1;
+  }
+  int sematic_res=do_sematic(asttree,&globals);
+  if (!sematic_res) {
+    print_node(asttree, 0);
+    printf("compilation failed\n");
+    retv=-1;
+    goto free_sematic;
   }
   
 #ifdef DEBUG
-  print_node(asttree, 0);
+  //print_node(asttree, 0);
 #endif
   list_t ic1=gen_intercode(asttree);
   list_t intercodes=process_intercode(&ic1);
 #ifdef DEBUG
-  for (size_t i=0; i < intercodes.len; ++i) {
-    intercode_t* code=list_get(&intercodes, i);
-    printf("%s %s,%s,%s\n", codetype_tostr(code->type), code->op1.value, code->op2.value, code->op3.value);
+  if (is_log_part_enabled(INTERCODE_RESULT)) {
+    for (size_t i=0; i < intercodes.len; ++i) {
+      intercode_t *code = list_get(&intercodes, i);
+      print_intercode(code);
+    }
   }
 #endif
-  platform_info_t platform={
-    .abi=abi,
-    .architecture=arch
-  };
-  char* asmcode=amd64_gen(&intercodes,platform);
+  platform_info_t platform = {.abi = abi, .architecture = arch};
+
+  char *asmcode = NULL;
+  switch (arch) {
+  case ARCH_AMD64: {
+    asmcode=amd64_gen(&intercodes,platform);
+    break;
+  }
+  case ARCH_AARCH64:{
+    asmcode = aarch64_gen(&intercodes, platform);    
+  }
+  default:
+    break;
+  }
+  
   
   if(!asmcode){
-    return -1;
+    retv=-1;
+    goto free_ir;
   }
-  LOG(VERBOSE, "asm:\n%s",asmcode);
+  do_log(VERBOSE, ASMGEN_RESULT, "asm:\n%s",asmcode);
   
   FILE* fw=fopen(output, "w");
   if(!fw){
     perror("failed open output file");
-    return -1;
+    goto free_asmcode;
   }
   fwrite(asmcode, strlen(asmcode), 1, fw);
   fclose(fw);
-  
+free_asmcode:
   //release the used mem
   free(asmcode);
+free_ir:
+  free_list(&ic1);
+  free_list(&intercodes);
+free_sematic:
+  sematic_dispose_resources();
+free_ast:
+  free_node(asttree);
+free_tokens:
+  FREE_LIST_DTOR(&tokens,free_token);
+free_source:
+  // free the source
+  free(source);
+  free_compiler_global_data(&globals);
   free_rest();
   return 0;
 }

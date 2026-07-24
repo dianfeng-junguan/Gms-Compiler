@@ -1,6 +1,14 @@
 # 规范
 ## ast node的构成
 
+### NODE_TYPECONVERT
+- left: typetree
+- right : expr
+
+### NODE_FUNCCALL
+- left: NODE_ID
+- right: NODE_LEAFHOLDER/arg
+
 ### NODE_DEFINITION
 
 - left: 
@@ -43,3 +51,13 @@
 ```
 let a:classname=classname{name:value,...};
 ```
+# 类型转换
+
+允许隐式转换的类型:
+int == pointer
+string == pointer
+char == int
+允许显式转换的类型:
+int == string
+array == pointer
+

@@ -9,6 +9,7 @@
 // Auto-generated function for tokentype_t
 const char* tokentype_tostr(tokentype_t type) {
   switch(type) {
+    case TOKEN_NONE: return "TOKEN_NONE";
     case LET: return "LET";
     case FN: return "FN";
     case IF: return "IF";
@@ -18,8 +19,11 @@ const char* tokentype_tostr(tokentype_t type) {
     case EXTERN: return "EXTERN";
     case BREAK: return "BREAK";
     case CLASS: return "CLASS";
+    case INCLUDE: return "INCLUDE";
     case INT: return "INT";
     case STRING: return "STRING";
+    case CHAR: return "CHAR";
+    case VOID: return "VOID";
     case TYPE_KEYWORD: return "TYPE_KEYWORD";
     case WHITESPACE: return "WHITESPACE";
     case COMMA: return "COMMA";
@@ -29,6 +33,8 @@ const char* tokentype_tostr(tokentype_t type) {
     case DOUBLE_QUOTE: return "DOUBLE_QUOTE";
     case OPENPAREN: return "OPENPAREN";
     case CLOSEPAREN: return "CLOSEPAREN";
+    case OPEN_SQUAREBRACKET: return "OPEN_SQUAREBRACKET";
+    case CLOSE_SQUAREBRACKET: return "CLOSE_SQUAREBRACKET";
     case OPENBRACE: return "OPENBRACE";
     case CLOSEBRACE: return "CLOSEBRACE";
     case ADD: return "ADD";
@@ -86,6 +92,7 @@ const char* get_nodetype_str(astnode_type_t type) {
     case NODE_DECLARE_VAR: return "NODE_DECLARE_VAR";
     case NODE_DECLARE_FUNC: return "NODE_DECLARE_FUNC";
     case NODE_CLASS: return "NODE_CLASS";
+    case NODE_INCLUDE: return "NODE_INCLUDE";
     case NODE_COMMALIST: return "NODE_COMMALIST";
     case NODE_ADD: return "NODE_ADD";
     case NODE_SUB: return "NODE_SUB";
@@ -98,6 +105,7 @@ const char* get_nodetype_str(astnode_type_t type) {
     case NODE_BITOR: return "NODE_BITOR";
     case NODE_XOR: return "NODE_XOR";
     case NODE_PROPERTY: return "NODE_PROPERTY";
+    case NODE_INDEX: return "NODE_INDEX";
     case NODE_EQUAL: return "NODE_EQUAL";
     case NODE_GREATER: return "NODE_GREATER";
     case NODE_LESS: return "NODE_LESS";
@@ -109,12 +117,16 @@ const char* get_nodetype_str(astnode_type_t type) {
     case NODE_OR: return "NODE_OR";
     case NODE_NOT: return "NODE_NOT";
     case NODE_FUNCCALL: return "NODE_FUNCCALL";
+    case NODE_POINTEROF: return "NODE_POINTEROF";
+    case NODE_ARRAYOF: return "NODE_ARRAYOF";
+    case NODE_ARRAYFILL: return "NODE_ARRAYFILL";
     case NODE_ARGLIST: return "NODE_ARGLIST";
     case NODE_ARGPAIR: return "NODE_ARGPAIR";
     case NODE_KEYVALUE_PAIR: return "NODE_KEYVALUE_PAIR";
     case NODE_TYPEKW: return "NODE_TYPEKW";
     case NODE_CLASSMEMBER: return "NODE_CLASSMEMBER";
     case NODE_CLASSFILL: return "NODE_CLASSFILL";
+    case NODE_TYPECONVERT: return "NODE_TYPECONVERT";
     default: return "UNKNOWN_astnode_type_t";
   }
 }
@@ -130,6 +142,7 @@ const char* codetype_tostr(intercode_type_t type) {
     case CODE_ALLOC_GLOBAL: return "CODE_ALLOC_GLOBAL";
     case CODE_ALLOC_LOCAL: return "CODE_ALLOC_LOCAL";
     case CODE_ALLOC_TMP: return "CODE_ALLOC_TMP";
+    case CODE_DECL_ARG: return "CODE_DECL_ARG";
     case CODE_FREE: return "CODE_FREE";
     case CODE_RETURN: return "CODE_RETURN";
     case CODE_MOV: return "CODE_MOV";

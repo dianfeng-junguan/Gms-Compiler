@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <stddef.h>
 typedef enum {
   NODE_NONE = 0,
   // this is usally used when a node has more than 2 subnodes.
@@ -26,6 +27,7 @@ typedef enum {
   NODE_DECLARE_VAR,
   NODE_DECLARE_FUNC,
   NODE_CLASS,
+  NODE_INCLUDE,
   // expressions
 
   NODE_COMMALIST,
@@ -44,8 +46,10 @@ typedef enum {
   // visit property of object
 
   NODE_PROPERTY,
+  // array[index]
+  NODE_INDEX,
   // comparator
-  
+
   NODE_EQUAL,
   NODE_GREATER,
   NODE_LESS,
@@ -59,6 +63,11 @@ typedef enum {
   NODE_OR,
   NODE_NOT,
   NODE_FUNCCALL,
+  // type expression
+  NODE_POINTEROF,
+  NODE_ARRAYOF,
+  // filling the array  
+  NODE_ARRAYFILL,
   // others
   NODE_ARGLIST,
   NODE_ARGPAIR,
@@ -68,8 +77,14 @@ typedef enum {
   // filling the class fields  
   NODE_CLASSFILL,
   
+  NODE_TYPECONVERT,
+  
 } astnode_type_t;
 
+typedef struct symtab{
+  list_t table;
+  struct symtab *parent;
+} symbol_table_t;
 typedef enum {
   TYPE_VOID = 0,
   TYPE_INT,
@@ -80,13 +95,14 @@ typedef struct{
   char *name;
   symbol_type_index_t type;
 }name_type_pair_t;
-
+typedef struct _astnode_t astnode_t;
 typedef struct {  
   // name of this type  
   char *name;
   // memsize it takes up. class will add up the sizes of the members but the
-  // final size depends on the memory alignment chosen.  
+  // final size depends on the memory alignment chosen.
   size_t size;
+  unsigned long long hash;
   union {
     // if this is a class, it records the members
     /*
@@ -111,7 +127,12 @@ typedef struct {
   // point_to=int*, pointer_level=2, so the type will be char***.
   // well but actually it will put all pointer levels to pointer_level
   // to avoid any * in point_to.
-  int point_to;  
+  int point_to;
+  
+  // use to compare type trees
+  astnode_t *type_tree;
+  // for array type  
+  size_t element_size;
 } symbol_type_t;
 int symtypcmp(int a, int b);
 typedef struct _astnode_t{
@@ -121,7 +142,7 @@ typedef struct _astnode_t{
   // used for value nodes.
   char* value;
   // used for sematics.
-  list_t syms;
+  symbol_table_t* syms;
   filepos_t position;
   // layer here means the depth of the scope.
   // used to differentiate symbols defined at different depths of scopes.
@@ -148,16 +169,25 @@ typedef struct{
   int layer;
   unsigned long long value;
   int is_extern;
-  // function args. the elements are of type symbol_type_t
+  // function args. list_t<name_type_pair_t>
   list_t args;
 }symbol_t;
 astnode_t *do_parse(list_t *tokens);
 
 const char* get_nodetype_str(astnode_type_t type);
-
+astnode_t *create_node(astnode_type_t type, astnode_t *left, astnode_t *right,
+                       char *value, filepos_t position);
 void free_node(astnode_t *node);
 void free_symbol(symbol_t *sym);
 void free_all_nodes();
+void print_node(astnode_t* node, int indent);
+
+symbol_table_t create_symtab(symbol_table_t *parent);
+void add_symbol(symbol_table_t *symtab, symbol_t sym);
+/// search for the symbol in the symbol table. if the symbol cannot be
+/// found and this symtab has a parent, it searches in the parent table.
+symbol_t *find_symbol(symbol_table_t *symtab, char *name);
+void free_symtab(symbol_table_t *symtab);
 //
 #define NODE_DEF_ID(node) (node->left->left)
 #define NODE_DEF_TYPEKW(node) (node->left->right)

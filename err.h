@@ -25,6 +25,6 @@ void cry_error(const char* sender, char* msg, struct _filepos_t pos);
 #define panic(msg,...) \
   do {						\
     printf(msg, ##__VA_ARGS__);			\
-    exit(0);					\
+    exit(-1);					\
   } while (0);					
 #endif
