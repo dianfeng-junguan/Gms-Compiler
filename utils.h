@@ -158,4 +158,3 @@ typedef enum {
 int is_log_part_enabled(log_parts part);
 #endif
 
-

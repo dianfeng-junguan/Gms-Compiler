@@ -9,35 +9,20 @@
 #include "asmgen.h"
 #include "status.h"
 #include "utils.h"
+#include <fstream>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void print_intercode(intercode_t* code){
-  static char buf[256];
-  intercode_tostr(buf, code);
-  puts(buf);
-}
-
-void print_node(astnode_t *node, int indent) {
-  if (!node) {
-    printf("(null)\n");
-    return;
-  }
-  printf("%*s%s=%s@%d type %d\n",indent,"-",get_nodetype_str(node->node_type), node->value?node->value:"<null>",node->layer, node->value_type);
-  if(node->left)
-    print_node(node->left, indent+2); 
-  if(node->right)
-    print_node(node->right, indent+2);
-}
+using std::string;
 int main(int argc, char** argv){
   if(argc<2){
     perror("error: need input file\n");
     return -1;
   }
   init_my_allocator();
-  char* input=NULL;
+  string input;
   char* output="a.asm";
   char* arch_str="amd64";
   char* abi_str="default";
@@ -86,7 +71,7 @@ int main(int argc, char** argv){
       return 0;
     }
   }
-  if(!input){
+  if(input.empty()){
     printf("error: no input file\n");
     return 0;
   }
@@ -126,32 +111,21 @@ int main(int argc, char** argv){
     printf("error: unknown abi format\n");
     return 0;
   }
-  FILE* f=fopen(input, "r");
-  if(!f){
-    printf("failed to open input file %s",input);
+  std::ifstream f(input,std::ios::in);
+  if(f.fail()){
+    printf("failed to open input file %s",input.c_str());
     perror(":");
     return -1;
   }
-  fseek(f, 0, SEEK_END);
-  size_t len=ftell(f);
-  fseek(f, 0, SEEK_SET);
-  char* source=malloc(len+1);
-  memset(source, 0, len + 1);
-  size_t read = fread(source, len, 1, f);
-  fclose(f);
+  f.seekg(std::ios::end);
+  size_t len=f.tellg();
+  f.seekg(std::ios::beg);
+  string source;
+  f>>source;
+  f.close();
   // get the path of the directory of the source code.
-  // we need to search for the included files based on this path.
-  char *pioneer = input+strlen(input);
-  while (pioneer>=input&&(*pioneer!='/'&&*pioneer!='\\')) {
-    pioneer--;
-  }
-  pioneer++;//include the /  
-  char *source_dir = "./";
-  if (pioneer>input) {
-    source_dir=malloc(pioneer-input+1);
-    strncpy(source_dir, input, pioneer-input);
-  }
-  source_dir[pioneer-input]='\0';
+  // we need to search for the included files based on this path. 
+  std::string source_dir = input.substr(0,input.find_last_of('/'));
   /******************************************/
   /* if (read<1) {			    */
   /*   perror("error while reading file."); */
@@ -161,99 +135,44 @@ int main(int argc, char** argv){
   /******************************************/
   compiler_global_data_t globals;
   init_compiler_global_data(&globals);
-  init_sematic();
 
   int retv=0;
-  list_t tokens = do_lex(source);
-  if (!preprocess_tokens(&tokens,source_dir)) {
-    retv=-1;
-    goto free_source;
-  }
+  lexer_result_t tokens = do_lex(source);
+  // if (!preprocess_tokens(&tokens,source_dir)) {
+  //   retv=-1;
+  //   goto free_source;
+  // }
   // free the source_dir variable
-  free(source_dir);
-#ifdef DEBUG
-  if (is_log_part_enabled(LEXER_RESULT)) {
-    for (size_t i=0; i < tokens.len; ++i) {
-      token_t* tok=list_get(&tokens, i);
-      printf("(%s, %s, line %zu, col %zu)\n",tokentype_tostr(tok->token_type), tok->value,
-	     tok->position.line, tok->position.column);
-    } 
-  }
-#endif
-  astnode_t *asttree = do_parse(&tokens);
-  if (!asttree) {
-    retv=-1;
-    goto free_tokens;
+  parser_result_t asttree = do_parse(&tokens.tokenstream);
+  if (!asttree.success) {
+    return -1;
   }
   if (is_log_part_enabled(PARSER_OUTPUTTREE)) {
-    print_node(asttree, 0);
+    // print_node(asttree, 0);
   }
-  int sematic_res=do_sematic(asttree,&globals);
+  bool sematic_res=do_sematic(asttree.ast);
   if (!sematic_res) {
-    print_node(asttree, 0);
-    printf("compilation failed\n");
-    retv=-1;
-    goto free_sematic;
+    // print_node(asttree, 0);
+    printf("compilation failed\n");    
+    return -1;
   }
-  
-#ifdef DEBUG
-  //print_node(asttree, 0);
-#endif
-  list_t ic1=gen_intercode(asttree);
-  list_t intercodes=process_intercode(&ic1);
-#ifdef DEBUG
-  if (is_log_part_enabled(INTERCODE_RESULT)) {
-    for (size_t i=0; i < intercodes.len; ++i) {
-      intercode_t *code = list_get(&intercodes, i);
-      print_intercode(code);
-    }
-  }
-#endif
-  platform_info_t platform = {.abi = abi, .architecture = arch};
-
-  char *asmcode = NULL;
-  switch (arch) {
-  case ARCH_AMD64: {
-    asmcode=amd64_gen(&intercodes,platform);
-    break;
-  }
-  case ARCH_AARCH64:{
-    asmcode = aarch64_gen(&intercodes, platform);    
-  }
-  default:
-    break;
-  }
-  
-  
-  if(!asmcode){
-    retv=-1;
-    goto free_ir;
-  }
-  do_log(VERBOSE, ASMGEN_RESULT, "asm:\n%s",asmcode);
-  
-  FILE* fw=fopen(output, "w");
-  if(!fw){
+  // TODO : gen qbe ir
+  string ir_code;
+  // do_log(VERBOSE, ASMGEN_RESULT, "asm:\n%s",asmcode);
+  std::ofstream fw(output);
+  if(fw.fail()){
     perror("failed open output file");
     goto free_asmcode;
   }
-  fwrite(asmcode, strlen(asmcode), 1, fw);
-  fclose(fw);
+  fw<<ir_code;
+  fw.close();
+
 free_asmcode:
-  //release the used mem
-  free(asmcode);
 free_ir:
-  free_list(&ic1);
-  free_list(&intercodes);
 free_sematic:
-  sematic_dispose_resources();
 free_ast:
-  free_node(asttree);
 free_tokens:
-  FREE_LIST_DTOR(&tokens,free_token);
 free_source:
   // free the source
-  free(source);
-  free_compiler_global_data(&globals);
-  free_rest();
   return 0;
 }

@@ -1,120 +1,157 @@
-/**
-   lexer part.
-   26/01/05
-   Xexux
-**/
-#include "utils.h"
-#include <stddef.h>
-#include <stdbool.h>
-typedef enum {
-  TOKEN_NONE,
-  LET,
-  FN,
-  IF,
-  ELSE,
-  WHILE,
-  RETURN,
-  EXTERN,
-  BREAK,
-  CLASS,
-  INCLUDE,
-  // type
-  INT,
-  STRING,
-  CHAR,
-  VOID,
-  TYPE_KEYWORD,
-  // whitespace
-  WHITESPACE,
-  // separator
-  COMMA,
-  SEMICOLON,
-  COLON,
-  QUOTE,
-  DOUBLE_QUOTE,
-  OPENPAREN,
-  CLOSEPAREN,
-  OPEN_SQUAREBRACKET,
-  CLOSE_SQUAREBRACKET,
-  OPENBRACE,
-  CLOSEBRACE,
-  // operator
-  ADD,
-  SUB,
-  MUL,
-  DIV,
-  MOD,
-  BITAND,
-  BITOR,
-  XOR,
-  DOT,
-  // comparator
-  EQUAL,
-  GREATER,
-  LESS,
-  GREATER_EQUAL,
-  LESS_EQUAL,
-  NOT_EQUAL,
-  // action
-  ASSIGN,
-  // logic
-  AND,
-  OR,
-  // this is also a bit operator
-  NOT,
-  // values
-  IDENTIFIER,
-  CONSTANT_NUMBER,
-  CONSTANT_STRING,
-  CONSTANT_CHAR,
-  // below are types used in parser and are not allow to used in lexer.
-  TOKEN_VALUE,
-  TOKEN_ID,
-  TOKEN_TYPEKW,
-  TOKEN_EXPR,
-  // condition expression  
-  TOKEN_EXPR_COND,
-  TOKEN_STATEMENTS,
-  TOKEN_ARGLIST,
-  TOKEN_CLASS_MEMBERDEF,
-} tokentype_t;
-#define IS_CONST_TOK(tok) ((tok)->token_type==CONSTANT_NUMBER||(tok)->token_type==CONSTANT_STRING)      
-typedef struct {
-  tokentype_t token_type;
-  char* value;
-  filepos_t position;
+#pragma once
+#include <algorithm>
+#include <cassert>
+#include <memory>
+#include <vector>
+#include <string>
+
+typedef enum{
+TOKEN_LET,
+TOKEN_FN,
+TOKEN_IF,
+TOKEN_ELSE,
+TOKEN_WHILE,
+TOKEN_BREAK,
+TOKEN_RETURN,
+TOKEN_CONTINUE,
+TOKEN_INCLUDE,
+TOKEN_INT,
+TOKEN_STRING_TYPEKW,
+TOKEN_CHAR_TYPEKW,
+TOKEN_VOID,
+TOKEN_STRUCT,
+TOKEN_FLOAT,
+TOKEN_NUMBER,
+TOKEN_STRING,
+TOKEN_CHAR,
+TOKEN_IDENTIFIER,
+TOKEN_LINE_COMMENT,
+TOKEN_BLOCK_COMMENT,
+TOKEN_ADDASSIGN,
+TOKEN_MINUSASSIGN,
+TOKEN_MULASSIGN,
+TOKEN_DIVASSIGN,
+TOKEN_MODASSIGN,
+TOKEN_BITANDASSIGN,
+TOKEN_BITORASSIGN,
+TOKEN_SHIFTLEFTASSIGN,
+TOKEN_SHIFTRIGHTASSIGN,
+TOKEN_GREATEREQUAL,
+TOKEN_LESSEQUAL,
+TOKEN_EQUAL,
+TOKEN_ASSIGN,
+TOKEN_UNEQUAL,
+TOKEN_SHIFTLEFT,
+TOKEN_SHIFTRIGHT,
+TOKEN_OR,
+TOKEN_GREATERTHAN,
+TOKEN_LESSTHAN,
+TOKEN_ADD,
+TOKEN_MINUS,
+TOKEN_STAR,
+TOKEN_SLASH,
+TOKEN_PERCENT,
+TOKEN_PROPERTY,
+TOKEN_OPENPAREN,
+TOKEN_CLOSEDPAREN,
+TOKEN_AND,
+TOKEN_NOT,
+TOKEN_BITAND,
+TOKEN_BITOR,
+TOKEN_BITNOT,
+TOKEN_BITXOR,
+TOKEN_COMMA,
+TOKEN_OPEN_SQUAREDBRACKET,
+TOKEN_CLOSED_SQUAREDBRACKET,
+TOKEN_OPENBRACKET,
+TOKEN_CLOSEDBRACKET,
+TOKEN_SEMICOLON,
+TOKEN_COLON,
+TOKEN_WHITESPACE,
+
+}token_type_t;
+    
+#define BELONGS_TO_CATEGORY_KEYWORDS(toktype) (toktype==TOKEN_LET||toktype==TOKEN_FN||toktype==TOKEN_IF||toktype==TOKEN_ELSE||toktype==TOKEN_WHILE||toktype==TOKEN_BREAK||toktype==TOKEN_RETURN||toktype==TOKEN_CONTINUE||toktype==TOKEN_INCLUDE)
+        
+#define BELONGS_TO_CATEGORY_TYPEKW(toktype) (toktype==TOKEN_INT||toktype==TOKEN_STRING_TYPEKW||toktype==TOKEN_CHAR_TYPEKW||toktype==TOKEN_VOID||toktype==TOKEN_STRUCT)
+        
+#define BELONGS_TO_CATEGORY_NUMBER(toktype) (toktype==TOKEN_FLOAT||toktype==TOKEN_NUMBER)
+        
+#define BELONGS_TO_CATEGORY_STRING(toktype) (toktype==TOKEN_STRING)
+        
+#define BELONGS_TO_CATEGORY_CHAR(toktype) (toktype==TOKEN_CHAR)
+        
+#define BELONGS_TO_CATEGORY_IDENTIFIER(toktype) (toktype==TOKEN_IDENTIFIER)
+        
+#define BELONGS_TO_CATEGORY_COMMENT(toktype) (toktype==TOKEN_LINE_COMMENT||toktype==TOKEN_BLOCK_COMMENT)
+        
+#define BELONGS_TO_CATEGORY_OPERATOR(toktype) (toktype==TOKEN_ADDASSIGN||toktype==TOKEN_MINUSASSIGN||toktype==TOKEN_MULASSIGN||toktype==TOKEN_DIVASSIGN||toktype==TOKEN_MODASSIGN||toktype==TOKEN_BITANDASSIGN||toktype==TOKEN_BITORASSIGN||toktype==TOKEN_SHIFTLEFTASSIGN||toktype==TOKEN_SHIFTRIGHTASSIGN||toktype==TOKEN_GREATEREQUAL||toktype==TOKEN_LESSEQUAL||toktype==TOKEN_EQUAL||toktype==TOKEN_ASSIGN||toktype==TOKEN_UNEQUAL||toktype==TOKEN_SHIFTLEFT||toktype==TOKEN_SHIFTRIGHT||toktype==TOKEN_OR||toktype==TOKEN_GREATERTHAN||toktype==TOKEN_LESSTHAN||toktype==TOKEN_ADD||toktype==TOKEN_MINUS||toktype==TOKEN_STAR||toktype==TOKEN_SLASH||toktype==TOKEN_PERCENT||toktype==TOKEN_PROPERTY||toktype==TOKEN_OPENPAREN||toktype==TOKEN_CLOSEDPAREN||toktype==TOKEN_AND||toktype==TOKEN_NOT||toktype==TOKEN_BITAND||toktype==TOKEN_BITOR||toktype==TOKEN_BITNOT||toktype==TOKEN_BITXOR||toktype==TOKEN_COMMA||toktype==TOKEN_OPEN_SQUAREDBRACKET||toktype==TOKEN_CLOSED_SQUAREDBRACKET)
+        
+#define BELONGS_TO_CATEGORY_BI_OPERATOR(toktype) (toktype==TOKEN_ADD||toktype==TOKEN_MINUS||toktype==TOKEN_STAR||toktype==TOKEN_SLASH||toktype==TOKEN_AND||toktype==TOKEN_OR||toktype==TOKEN_NOT||toktype==TOKEN_BITAND||toktype==TOKEN_BITOR||toktype==TOKEN_BITXOR||toktype==TOKEN_PROPERTY||toktype==TOKEN_PERCENT||toktype==TOKEN_UNEQUAL||toktype==TOKEN_GREATERTHAN||toktype==TOKEN_LESSTHAN||toktype==TOKEN_GREATEREQUAL||toktype==TOKEN_LESSEQUAL||toktype==TOKEN_SHIFTLEFT||toktype==TOKEN_SHIFTRIGHT||toktype==TOKEN_ADDASSIGN||toktype==TOKEN_MINUSASSIGN||toktype==TOKEN_MULASSIGN||toktype==TOKEN_DIVASSIGN||toktype==TOKEN_MODASSIGN||toktype==TOKEN_BITANDASSIGN||toktype==TOKEN_BITORASSIGN||toktype==TOKEN_SHIFTLEFTASSIGN||toktype==TOKEN_SHIFTRIGHTASSIGN)
+        
+#define BELONGS_TO_CATEGORY_SINGLE_OPERATOR(toktype) (toktype==TOKEN_ADD||toktype==TOKEN_MINUS||toktype==TOKEN_STAR||toktype==TOKEN_NOT||toktype==TOKEN_BITNOT||toktype==TOKEN_BITAND)
+        
+#define BELONGS_TO_CATEGORY_SEPARATOR(toktype) (toktype==TOKEN_OPENBRACKET||toktype==TOKEN_CLOSEDBRACKET||toktype==TOKEN_SEMICOLON||toktype==TOKEN_COLON)
+        
+#define BELONGS_TO_CATEGORY_WHITESPACE(toktype) (toktype==TOKEN_WHITESPACE)
+        
+typedef struct lexer_rule_t{
+    const char* name;
+    const char* pattern;
+    token_type_t tok_type;
+}lexer_rule_t;
+typedef struct _token_t{
+    token_type_t token_type;
+    std::string value;
+    int line;
+    int column;
 }token_t;
-
-typedef bool (*begin_func_t)(char);
-/*
-  c: the char to be checked.
-  start: the start pointer of the scanned str.
-  offset: the offset of the c from start. using this we can know how many chars we have scanned. 
- */
-typedef bool (*allow_func_t)(char c,char* start, size_t offset);
-typedef bool (*after_func_t)(char* str, list_t* list, filepos_t pos);
-
-typedef struct {
-  begin_func_t begin;
-  allow_func_t scan;
-  after_func_t after;
-}lex_recipe_t;
-
+class tokenstream_t{
+    public:
+        tokenstream_t(std::vector<token_t> tokens):ptrs(1, 0){
+            for(auto &tok:tokens){
+                this->tokens.push_back(std::make_unique<token_t>(tok));
+            }
+        }
+        token_t *peek(){
+            if(ptrs.back()>=tokens.size()){
+                return NULL;
+            }
+            return tokens[ptrs.back()].get();
+        }
+        void next(){
+            assert(ptrs.size()>0);
+            ptrs.back()++;
+        }
+        void begin_parsing(){
+            ptrs.push_back(ptrs.back());
+        }
+        void end_parsing(){
+            assert(ptrs.size()>=2);
+            long last_ptr=ptrs.back();
+            ptrs.pop_back();
+            ptrs.back()=last_ptr;
+        }
+        void reset(){
+            assert(ptrs.size()>=2);
+            ptrs.pop_back();
+        }
+        token_t *consume(){
+            if(ptrs.back()>=tokens.size()){
+                return NULL;
+            }
+            token_t *token=tokens[ptrs.back()++].get();
+            return token;
+        }
+        bool eof(){
+            return ptrs.back()>=tokens.size();
+        }
+    private:
+        std::vector<std::unique_ptr<token_t>> tokens;
+        std::vector<long> ptrs;
+};
 typedef struct{
-  char* str;
-  tokentype_t op;
-}str_op_pair_t;
-
-typedef struct{
-  char* str;
-  tokentype_t sep;
-} str_sep_pair_t;
-
-list_t do_lex(char *str);
-
-/// create a token on the heap.
-/// 
-/// reminder: the value str needs to be on the heap.
-token_t create_token(tokentype_t token_type, char *value, filepos_t pos);
-const char* tokentype_tostr(tokentype_t tt);
-void free_token(token_t* tok);
+    bool success;
+    tokenstream_t tokenstream;
+}lexer_result_t;
+lexer_result_t do_lex(std::string str);

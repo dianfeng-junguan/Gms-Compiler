@@ -1,0 +1,632 @@
+[predeclare]
+declaration.fn:
+    predeclare_function(name,args,return_type)
+declaration.struct:
+    predeclare_struct(name)
+function.default:
+    predeclare_function(name,args,return_type)
+    create_function_scope()
+    predeclare_parameters(args)
+    visit(stmts)
+    leave_scope()
+struct.default:
+    predeclare_struct(name)
+    create_struct_scope()
+    predeclare_members(members)
+    leave_scope()
+if.default:
+    create_block_scope()
+    visit(statements)
+    leave_scope()
+    visit(rest_block)
+while.default:
+    create_loop_scope()
+    visit(statements)
+    leave_scope()
+else.default:
+    create_block_scope()
+    visit(statements)
+    leave_scope()
+elseif.default:
+    create_block_scope()
+    visit(statements)
+    leave_scope()
+
+[resolve]
+function.default:
+    enter_function_scope()
+    declare_parameters(args)
+    visit(return_type)
+    visit(stmts)
+    leave_scope()
+struct.default:
+    enter_struct_scope()
+    declare_members(members)
+    visit(members)
+    leave_scope()
+definition.deftype:
+    visit(def_type)
+    visit(value)
+    declare_variable(name,def_type)
+definition.defntype:
+    visit(value)
+    declare_inferred_variable(name,value)
+declaration.varntype:
+    declare_variable(name)
+declaration.var:
+    visit(def_type)
+    declare_variable(name,def_type)
+declaration.fn:
+    visit(args)
+    visit(return_type)
+    resolve_function_signature(name,args,return_type)
+declaration.struct:
+    visit(members)
+    resolve_struct_signature(name,members)
+glued_factor.lvalue:
+    visit(value)
+glued_factor.call:
+    visit(left)
+    visit(args)
+    resolve_arguments(args)
+lvalue.prop:
+    visit(left)
+    resolve_member(left,right)
+lvalue_noproperty.id:
+    resolve_symbol(id)
+if.default:
+    visit(condition)
+    enter_block_scope()
+    visit(statements)
+    leave_scope()
+    visit(rest_block)
+while.default:
+    visit(condition)
+    enter_loop_scope()
+    visit(statements)
+    leave_scope()
+else.default:
+    enter_block_scope()
+    visit(statements)
+    leave_scope()
+elseif.default:
+    visit(condition)
+    enter_block_scope()
+    visit(statements)
+    leave_scope()
+statement.definition:
+    visit(def)
+statement.expr:
+    visit(expr)
+statement.declaration:
+    visit(decl_stmt)
+statement.if:
+    visit(if_stmt)
+statement.while:
+    visit(while_stmt)
+statement.return_sth:
+    visit(value)
+
+[typecheck]
+function.default:
+    enter_function_context(name,return_type)
+    visit(args)
+    visit(return_type)
+    check_function_type(args,return_type)
+    visit(stmts)
+    leave_function_context()
+struct.default:
+    enter_struct_context(name)
+    visit(members)
+    leave_struct_context()
+definition.deftype:
+    visit(def_type)
+    require_valid_variable_type(def_type)
+    visit(value)
+    check_assignable(def_type,value)
+definition.defntype:
+    visit(value)
+    infer_variable_type(name,value)
+declaration.var:
+    visit(def_type)
+    require_valid_variable_type(def_type)
+declaration.fn:
+    visit(args)
+    visit(return_type)
+    check_function_type(args,return_type)
+declaration.struct:
+    visit(members)
+parameter_list_nonempty.singarg:
+    visit(arg_type)
+    require_valid_parameter_type(arg_type)
+parameter_list_nonempty.multiarg:
+    visit(arg_type)
+    require_valid_parameter_type(arg_type)
+    visit(other_args)
+structmembers.singmem:
+    visit(def_type)
+    require_valid_member_type(def_type)
+structmembers.multimem:
+    visit(def_type)
+    require_valid_member_type(def_type)
+    visit(other_members)
+assign_expr.assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_assignable(left,right)
+    propagate_type(left)
+assign_expr.plus_assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_addable(left,right)
+    propagate_type(left)
+assign_expr.minus_assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_minusable(left,right)
+    propagate_type(left)
+assign_expr.mul_assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_mulable(left,right)
+    propagate_type(left)
+assign_expr.div_assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_divable(left,right)
+    propagate_type(left)
+assign_expr.mod_assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_modable(left,right)
+    propagate_type(left)
+assign_expr.bitand_assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_bitandable(left,right)
+    propagate_type(left)
+assign_expr.bitor_assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_bitorable(left,right)
+    propagate_type(left)
+assign_expr.shiftleft_assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_shiftleftable(left,right)
+    propagate_type(left)
+assign_expr.shiftright_assign:
+    visit(left)
+    visit(right)
+    require_modifiable_lvalue(left)
+    check_shiftrightable(left,right)
+    propagate_type(left)
+assign_expr.logic_expr:
+    visit(expr)
+    propagate_type(expr)
+logic_expr_eq.eq:
+    visit(left)
+    visit(right)
+    check_equalable(left,right)
+    set_boolean_type()
+logic_expr_eq.neq:
+    visit(left)
+    visit(right)
+    check_nequalable(left,right)
+    set_boolean_type()
+logic_expr_eq.gt:
+    visit(left)
+    visit(right)
+    check_comparable(left,right)
+    set_boolean_type()
+logic_expr_eq.lt:
+    visit(left)
+    visit(right)
+    check_comparable(left,right)
+    set_boolean_type()
+logic_expr_eq.ge:
+    visit(left)
+    visit(right)
+    check_comparable(left,right)
+    set_boolean_type()
+logic_expr_eq.le:
+    visit(left)
+    visit(right)
+    check_comparable(left,right)
+    set_boolean_type()
+logic_expr_or.or:
+    visit(left)
+    visit(right)
+    require_boolean(left)
+    require_boolean(right)
+    set_boolean_type()
+logic_expr_and.and:
+    visit(left)
+    visit(right)
+    require_boolean(left)
+    require_boolean(right)
+    set_boolean_type()
+logic_expr_and.none:
+    visit(expr)
+    propagate_type(expr)
+logic_expr_or.none:
+    visit(expr)
+    propagate_type(expr)
+logic_expr_eq.none:
+    visit(expr)
+    propagate_type(expr)
+expr.add:
+    visit(left)
+    visit(right)
+    check_addable(left,right)
+    infer_binary_result_type(left,right)
+expr.sub:
+    visit(left)
+    visit(right)
+    check_minusable(left,right)
+    infer_binary_result_type(left,right)
+term.mul:
+    visit(left)
+    visit(right)
+    check_mulable(left,right)
+    infer_binary_result_type(left,right)
+term.div:
+    visit(left)
+    visit(right)
+    check_divable(left,right)
+    infer_binary_result_type(left,right)
+term.mod:
+    visit(left)
+    visit(right)
+    check_modable(left,right)
+    infer_binary_result_type(left,right)
+bitand_expr.bitand:
+    visit(left)
+    visit(right)
+    check_bitandable(left,right)
+    infer_binary_result_type(left,right)
+bitor_expr.bitor:
+    visit(left)
+    visit(right)
+    check_bitorable(left,right)
+    infer_binary_result_type(left,right)
+shift_expr.shiftleft:
+    visit(left)
+    visit(right)
+    check_shiftleftable(left,right)
+    infer_binary_result_type(left,right)
+shift_expr.shiftright:
+    visit(left)
+    visit(right)
+    check_shiftrightable(left,right)
+    infer_binary_result_type(left,right)
+term.factor:
+    visit(expr)
+    propagate_type(expr)
+power_factor.pow:
+    visit(left)
+    visit(right)
+    require_numeric(left)
+    require_numeric(right)
+    infer_binary_result_type(left,right)
+single_op_factor.bitnot:
+    visit(expr)
+    require_numeric(expr)
+    propagate_type(expr)
+single_op_factor.neg:
+    visit(expr)
+    require_numeric(expr)
+    propagate_type(expr)
+single_op_factor.ref:
+    visit(expr)
+    require_lvalue(expr)
+    infer_pointer_type(expr)
+single_op_factor.deref:
+    visit(expr)
+    require_pointer(expr)
+    infer_pointee_type(expr)
+single_op_factor.not:
+    visit(expr)
+    require_boolean(expr)
+    set_boolean_type()
+lvalue_noproperty.deref:
+    visit(derefee)
+    require_pointer(derefee)
+    infer_pointee_type(derefee)
+lvalue_noproperty.parened:
+    visit(expr)
+    require_lvalue(expr)
+    propagate_type(expr)
+lvalue_noproperty.id:
+    propagate_symbol_type(id)
+lvalue.noprop:
+    visit(expr)
+    propagate_type(expr)
+glued_factor.call:
+    visit(left)
+    visit(args)
+    require_callable(left)
+    check_argument_count(left,args)
+    check_argument_types(left,args)
+    infer_call_result_type(left)
+glued_factor.lvalue:
+    visit(value)
+    propagate_type(value)
+lvalue.prop:
+    visit(left)
+    check_member_access(left,right)
+    propagate_member_type(left,right)
+factor.num:
+    set_number_type(value)
+factor.ch:
+    set_char_type(value)
+factor.str:
+    set_string_type(value)
+glued_factor.value:
+    visit(value)
+    propagate_type(value)
+glued_factor.paren:
+    visit(expr)
+    propagate_type(expr)
+expr.term:
+    visit(expr)
+    propagate_type(expr)
+shift_expr.expr:
+    visit(expr)
+    propagate_type(expr)
+bitand_expr.shift:
+    visit(expr)
+    propagate_type(expr)
+bitor_expr.bitand:
+    visit(expr)
+    propagate_type(expr)
+power_factor.none:
+    visit(expr)
+    propagate_type(expr)
+single_op_factor.none:
+    visit(expr)
+    propagate_type(expr)
+ultimate_expr.def:
+    visit(expr)
+    propagate_type(expr)
+composed_type.paren:
+    visit(inner_type)
+    check_valid_type(inner_type)
+composed_type.raw_type:
+    resolve_type_name(inner_type)
+    set_named_type(inner_type)
+composed_type.ptr:
+    visit(pointer_type)
+    check_valid_type(pointer_type)
+composed_type.nsizedarr:
+    visit(element_type)
+    check_valid_type(element_type)
+composed_type.sizedarr:
+    visit(element_type)
+    visit(array_size)
+    check_valid_type(element_type)
+    require_integer(array_size)
+    require_constant_expression(array_size)
+    require_positive(array_size)
+statement.return_empty:
+    require_function_context()
+    check_empty_return_type()
+statement.return_sth:
+    visit(value)
+    require_function_context()
+    check_match_return_type(value)
+if.default:
+    visit(condition)
+    require_boolean(condition)
+    visit(statements)
+    visit(rest_block)
+elseif.default:
+    visit(condition)
+    require_boolean(condition)
+    visit(statements)
+while.default:
+    visit(condition)
+    require_boolean(condition)
+    visit(statements)
+
+[definite_init]
+function.default:
+    begin_definite_function()
+    mark_parameters_initialized(args)
+    visit(stmts)
+    end_definite_function()
+definition.deftype:
+    visit(value)
+    mark_initialized(name)
+definition.defntype:
+    visit(value)
+    mark_initialized(name)
+declaration.varntype:
+    mark_uninitialized(name)
+declaration.var:
+    mark_uninitialized(name)
+assign_expr.assign:
+    push_write_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+    mark_lvalue_initialized(left)
+assign_expr.plus_assign:
+    push_read_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+assign_expr.minus_assign:
+    push_read_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+assign_expr.mul_assign:
+    push_read_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+assign_expr.div_assign:
+    push_read_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+assign_expr.mod_assign:
+    push_read_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+assign_expr.bitand_assign:
+    push_read_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+assign_expr.bitor_assign:
+    push_read_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+assign_expr.shiftleft_assign:
+    push_read_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+assign_expr.shiftright_assign:
+    push_read_access()
+    visit(left)
+    pop_access_mode()
+    visit(right)
+single_op_factor.ref:
+    push_address_access()
+    visit(expr)
+    pop_access_mode()
+single_op_factor.deref:
+    push_read_access()
+    visit(expr)
+    pop_access_mode()
+lvalue_noproperty.deref:
+    push_read_access()
+    visit(derefee)
+    pop_access_mode()
+lvalue_noproperty.id:
+    require_initialized_if_read(id)
+logic_expr_and.and:
+    visit(left)
+    begin_optional_init()
+    visit(right)
+    end_optional_init()
+logic_expr_or.or:
+    visit(left)
+    begin_optional_init()
+    visit(right)
+    end_optional_init()
+if.default:
+    visit(condition)
+    begin_conditional_init()
+    begin_init_branch()
+    visit(statements)
+    end_init_branch()
+    visit(rest_block)
+    end_conditional_init()
+elseif_else.onlyelse:
+    begin_init_branch()
+    visit(else_block)
+    end_init_branch()
+elseif_else.chain:
+    visit(elseif_block)
+    visit(rest_block)
+elseif_else.empty:
+    record_implicit_init_branch()
+elseif.default:
+    begin_init_branch()
+    visit(condition)
+    save_init_condition_fallthrough()
+    visit(statements)
+    end_init_branch()
+while.default:
+    visit(condition)
+    begin_loop_init()
+    visit(statements)
+    end_loop_init()
+
+[flow]
+function.default:
+    enter_function_scope()
+    visit(stmts)
+    require_all_paths_return(stmts)
+    leave_scope()
+if.default:
+    visit(condition)
+    visit(statements)
+    visit(rest_block)
+    check_control_flow(condition,statements,rest_block)
+while.default:
+    enter_loop_scope()
+    visit(condition)
+    visit(statements)
+    check_control_flow(condition,statements)
+    leave_loop_scope()
+statement.break:
+    require_loop_context()
+    set_terminating_flow()
+statement.continue:
+    require_loop_context()
+    set_terminating_flow()
+statement.return_empty:
+    require_function_context()
+    set_return_flow()
+statement.return_sth:
+    require_function_context()
+    set_return_flow()
+statement.expr:
+    visit(expr)
+    set_fallthrough_flow()
+statement.definition:
+    visit(def)
+    set_fallthrough_flow()
+statement.declaration:
+    visit(decl_stmt)
+    set_fallthrough_flow()
+statement.if:
+    visit(if_stmt)
+    propagate_flow(if_stmt)
+statement.while:
+    visit(while_stmt)
+    propagate_flow(while_stmt)
+statements_nonempty.stmt:
+    visit(stmt)
+    propagate_flow(stmt)
+statements_nonempty.multistmt:
+    visit(stmt)
+    visit(other_stmts)
+    check_unreachable(stmt,other_stmts)
+    combine_sequential_flow(stmt,other_stmts)
+statements.hasstatements:
+    visit(statements)
+    propagate_flow(statements)
+statements.empty:
+    set_fallthrough_flow()
+else.default:
+    visit(statements)
+    propagate_flow(statements)
+elseif.default:
+    visit(statements)
+    propagate_flow(statements)
+elseif_else.onlyelse:
+    visit(else_block)
+    propagate_flow(else_block)
+elseif_else.chain:
+    visit(elseif_block)
+    visit(rest_block)
+    combine_branch_flow(elseif_block,rest_block)
+elseif_else.empty:
+    set_fallthrough_flow()
