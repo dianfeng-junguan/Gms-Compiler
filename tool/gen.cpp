@@ -1,6 +1,6 @@
 /*
   this code is used to auto-generate the debugging-needed part like
-  tokentype_tostr function, which need an array mapping the enum and string.
+  token_type_tostr function, which need an array mapping the enum and string.
   compile and run this before actually building the project.
   the program will generate a separate file including the definition of the
   arrays
@@ -22,8 +22,8 @@
  */
 typedef struct {
   const char *filename;      // The header file to read (e.g., "lexer.h")
-  const char *enum_name;     // The enum type name (e.g., "tokentype_t")
-  const char *function_name; // The output function name (e.g., "tokentype_tostr")
+  const char *enum_name;     // The enum type name (e.g., "token_type_t")
+  const char *function_name; // The output function name (e.g., "token_type_tostr")
 } EnumConfig;
 
 // --- Helper Functions ---
@@ -185,8 +185,8 @@ int main() {
   // 1. Define the jobs (Unified Interface)
   EnumConfig jobs[] = {
     {.filename = "lexer.h",
-     .enum_name = "tokentype_t",
-     .function_name = "tokentype_tostr"},
+     .enum_name = "token_type_t",
+     .function_name = "token_type_tostr"},
     {.filename = "parser.h",
      .enum_name = "astnode_type_t",
      .function_name = "get_nodetype_str"},

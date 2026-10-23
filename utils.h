@@ -121,7 +121,7 @@ void free_rest();
 // ==================================
 
 
-#define append(list, elementptr) (list_append(list, (void*)elementptr))
+#define append(list, elementptr) list_append(list, (void*)elementptr)
 
 #define VERBOSE 1
 #define REGULAR 3

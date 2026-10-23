@@ -1,7 +1,5 @@
 #include "main.h"
-#include "stdio.h"
 #include "lexer.h"
-#include "preprocess.h"
 #include "parser.h"
 #include "sematic.h"
 #include "intercode.h"
@@ -10,10 +8,11 @@
 #include "status.h"
 #include "utils.h"
 #include <fstream>
-#include <stddef.h>
-#include <stdio.h>
+#include <cstdio>
+#include <ios>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 
 using std::string;
 int main(int argc, char** argv){
@@ -21,7 +20,6 @@ int main(int argc, char** argv){
     perror("error: need input file\n");
     return -1;
   }
-  init_my_allocator();
   string input;
   char* output="a.asm";
   char* arch_str="amd64";
@@ -147,9 +145,9 @@ int main(int argc, char** argv){
   if (!asttree.success) {
     return -1;
   }
-  if (is_log_part_enabled(PARSER_OUTPUTTREE)) {
-    // print_node(asttree, 0);
-  }
+  // if (is_log_part_enabled(PARSER_OUTPUTTREE)) {
+  //   // print_node(asttree, 0);
+  // }
   bool sematic_res=do_sematic(asttree.ast);
   if (!sematic_res) {
     // print_node(asttree, 0);

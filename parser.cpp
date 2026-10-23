@@ -4,14 +4,14 @@
 #include "parser.h"
 token_t* parse_token(tokenstream_t *tokenstream, token_type_t token_type){
     token_t *token=tokenstream->peek();
-    if(token==NULL){
-        return NULL;
+    if(token==nullptr){
+        return nullptr;
     }
     if(token->token_type==token_type){
         tokenstream->next();
         return token;
     }
-    return NULL;
+    return nullptr;
 }
 factor_t *parse_factor_t(tokenstream_t *tokenstream);
 

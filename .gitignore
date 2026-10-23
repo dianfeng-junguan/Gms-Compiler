@@ -17,3 +17,9 @@ log/
 langlib/
 
 .cache/
+
+.clangd
+
+.clang-tidy
+
+*.exe
